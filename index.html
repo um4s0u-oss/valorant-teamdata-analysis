@@ -1,108 +1,116 @@
-@@ -0,0 +1,257 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Valorant 战队数据专业分析系统 v2.0</title>
+    <title>Valorant 战队数据专业分析系统 v3.0</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         :root { --valo-red: #ff4655; --dark-bg: #0f1923; }
         body { background-color: var(--dark-bg); color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         .player-card { background-color: #1f2937; border-left: 5px solid var(--valo-red); transition: transform 0.2s; }
-        .player-card:hover { transform: scale(1.01); }
         .drop-zone { border: 2px dashed #4b5563; background: #1a232e; cursor: pointer; transition: all 0.3s; }
         .drop-zone:hover, .drop-zone.drag-over { border-color: var(--valo-red); background: #252e3a; }
         .btn-valo { background-color: var(--valo-red); color: white; padding: 10px 24px; border-radius: 4px; font-weight: bold; cursor: pointer; display: inline-block; }
         .btn-valo:hover { background-color: #e03e4b; }
+        .role-badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: bold; text-transform: uppercase; }
+        .role-duelist { background-color: #ef444433; color: #ef4444; border: 1px solid #ef444455; }
+        .role-initiator { background-color: #3b82f633; color: #60a5fa; border: 1px solid #3b82f655; }
+        .role-controller { background-color: #10b98133; color: #34d399; border: 1px solid #10b98155; }
+        .role-sentinel { background-color: #8b5cf633; color: #a78bfa; border: 1px solid #8b5cf655; }
     </style>
 </head>
 <body class="p-4 md:p-10">
     <div class="max-w-6xl mx-auto">
+        <!-- 头部导航 -->
         <div class="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
             <div>
                 <h1 class="text-4xl font-black italic tracking-tighter text-white">PRO <span class="text-red-500">ANALYTICS</span></h1>
-                <p class="text-gray-400 text-sm mt-1">支持：姓名, 英雄, K, D, A, ACS, 首杀, +/-</p>
+                <p class="text-gray-400 text-sm mt-1">英雄分类归纳 + 智能赛训简评</p>
             </div>
             <div id="fileInfo" class="text-sm font-mono text-gray-500">等待导入数据...</div>
         </div>
 
+        <!-- 上传区 -->
         <div id="dropZone" class="drop-zone rounded-2xl p-12 text-center shadow-2xl mb-12">
             <div class="text-6xl mb-6">📊</div>
             <h2 class="text-2xl font-bold mb-4">将您的训练赛 CSV 文件拖到这里</h2>
             <p class="text-gray-400 mb-8">或者点击下方的红色按钮选择文件</p>
-            
             <label for="fileInput" class="btn-valo">选择电脑上的文件</label>
             <input type="file" id="fileInput" accept=".csv" class="hidden">
-            
             <div class="mt-6 text-xs text-gray-500">
-                提示：请确保 Excel 第一行包含“姓名,K,D,A”等表头
+                支持字段：姓名, 英雄, K, D, A, ACS, 首杀
             </div>
         </div>
 
-        <div id="dashboard" class="space-y-10 hidden">
-            </div>
+        <!-- 数据展示区 -->
+        <div id="dashboard" class="space-y-10 hidden"></div>
 
+        <!-- 占位提示 -->
         <div id="placeholder" class="py-20 text-center text-gray-600">
             <p>暂无数据，请先上传您的赛后统计表格</p>
         </div>
     </div>
 
     <script>
+        // Valorant 英雄定位字典库
+        const agentRoles = {
+            // 突击位 (Duelist)
+            'Jett': '突击位', 'Reyna': '突击位', 'Raze': '突击位', 'Phoenix': '突击位', 'Yoru': '突击位', 'Neon': '突击位', 'Iso': '突击位', 'Veto': '突击位',
+            // 先锋位 (Initiator)
+            'Sova': '先锋位', 'Breach': '先锋位', 'Skye': '先锋位', 'KAY/O': '先锋位', 'Fade': '先锋位', 'Gekko': '先锋位', 'Tejo': '先锋位',
+            // 控场/烟位 (Controller)
+            'Brimstone': '烟位', 'Omen': '烟位', 'Viper': '烟位', 'Astra': '烟位', 'Harbor': '烟位', 'Clove': '烟位',
+            // 哨位 (Sentinel)
+            'Cypher': '哨位', 'Killjoy': '哨位', 'Sage': '哨位', 'Chamber': '哨位', 'Deadlock': '哨位', 'Vyse': '哨位'
+        };
+
+        function getAgentRole(agentName) {
+            if (!agentName) return '未知位';
+            const cleanName = agentName.trim();
+            return agentRoles[cleanName] || '通用位';
+        }
+
+        function getRoleBadgeClass(role) {
+            switch(role) {
+                case '突击位': return 'role-duelist';
+                case '先锋位': return 'role-initiator';
+                case '烟位': return 'role-controller';
+                case '哨位': return 'role-sentinel';
+                default: return 'bg-gray-700 text-gray-300';
+            }
+        }
+
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
         const dashboard = document.getElementById('dashboard');
         const placeholder = document.getElementById('placeholder');
         const fileInfo = document.getElementById('fileInfo');
 
-        // 1. 阻止浏览器默认打开文件的行为
+        // 拖拽与点击事件绑定
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            window.addEventListener(eventName, e => {
-                e.preventDefault();
-                e.stopPropagation();
-            }, false);
+            window.addEventListener(eventName, e => { e.preventDefault(); e.stopPropagation(); }, false);
         });
-
-        // 2. 拖拽高亮效果
-        ['dragenter', 'dragover'].forEach(eventName => {
-            dropZone.addEventListener(eventName, () => dropZone.classList.add('drag-over'), false);
-        });
-        ['dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, () => dropZone.classList.remove('drag-over'), false);
-        });
-
-        // 3. 处理文件放置
-        dropZone.addEventListener('drop', (e) => {
-            const file = e.dataTransfer.files[0];
-            handleFile(file);
-        }, false);
-
-        // 4. 处理点击上传按钮
-        fileInput.addEventListener('change', (e) => {
-            handleFile(e.target.files[0]);
-        });
+        ['dragenter', 'dragover'].forEach(eventName => dropZone.addEventListener(eventName, () => dropZone.classList.add('drag-over'), false));
+        ['dragleave', 'drop'].forEach(eventName => dropZone.addEventListener(eventName, () => dropZone.classList.remove('drag-over'), false));
+        
+        dropZone.addEventListener('drop', (e) => handleFile(e.dataTransfer.files[0]), false);
+        fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
 
         function handleFile(file) {
-            if (!file) return;
-            if (!file.name.toLowerCase().endsWith('.csv')) {
+            if (!file || !file.name.toLowerCase().endsWith('.csv')) {
                 alert('请上传 .csv 格式的文件！');
                 return;
             }
-
             fileInfo.innerText = `正在读取: ${file.name}...`;
-            
             const reader = new FileReader();
-            // 尝试以 GBK 读取 (适用于大多数中文 Excel CSV)
             reader.readAsText(file, 'GBK');
-            
             reader.onload = function(e) {
-                const content = e.target.result;
-                // 如果读取结果包含奇怪字符，提示用户可能是编码问题
+                let content = e.target.result;
                 if (content.includes('')) {
-                    console.warn("检测到乱码，尝试切换编码读取...");
                     const readerRetry = new FileReader();
                     readerRetry.readAsText(file, 'UTF-8');
-                    readerRetry.onload = (e) => parseCSV(e.target.result);
+                    readerRetry.onload = (evt) => parseCSV(evt.target.result);
                 } else {
                     parseCSV(content);
                 }
@@ -110,18 +118,10 @@
         }
 
         function parseCSV(text) {
-            // 处理换行符，将字符串切成行
             const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
-            if (lines.length < 2) {
-                alert("文件内容不足（需要表头和至少一行数据）");
-                return;
-            }
+            if (lines.length < 2) { alert("文件内容不足"); return; }
 
-            // 获取表头并清理不可见字符
             const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-            console.log("识别到表头:", headers);
-
-            // 定位关键字段索引
             const idx = {
                 name: headers.indexOf('姓名'),
                 agent: headers.indexOf('英雄'),
@@ -129,8 +129,7 @@
                 d: headers.indexOf('D'),
                 a: headers.indexOf('A'),
                 acs: headers.indexOf('ACS'),
-                fk: headers.indexOf('首杀'),
-                pm: headers.indexOf('+/-')
+                fk: headers.indexOf('首杀')
             };
 
             if (idx.name === -1 || idx.k === -1 || idx.d === -1) {
@@ -138,7 +137,6 @@
                 return;
             }
 
-            // 数据解析与分组
             const playersMap = {};
             lines.slice(1).forEach(line => {
                 const row = line.split(',').map(v => v.trim().replace(/"/g, ''));
@@ -146,21 +144,31 @@
                 if (!name) return;
 
                 if (!playersMap[name]) {
-                    playersMap[name] = { matches: [], totalK:0, totalD:0, totalA:0, totalAcs:0, totalFk:0 };
+                    playersMap[name] = { 
+                        matches: [], 
+                        agentsMap: {}, // 用于按英雄聚合
+                        totalK: 0, totalD: 0, totalA: 0, totalAcs: 0, totalFk: 0 
+                    };
                 }
 
                 const k = parseInt(row[idx.k]) || 0;
-                const d = parseInt(row[idx.d]) || 1; // 避免除以0
+                const d = parseInt(row[idx.d]) || 1;
                 const a = (idx.a !== -1) ? parseInt(row[idx.a]) || 0 : 0;
                 const acs = (idx.acs !== -1) ? parseInt(row[idx.acs]) || 0 : 0;
                 const fk = (idx.fk !== -1) ? parseInt(row[idx.fk]) || 0 : 0;
+                const agentName = (idx.agent !== -1 && row[idx.agent]) ? row[idx.agent] : '未知英雄';
+                const role = getAgentRole(agentName);
 
-                playersMap[name].matches.push({
-                    agent: (idx.agent !== -1) ? row[idx.agent] : '未知英雄',
-                    k, d, a, acs, fk,
-                    kd: (k/d).toFixed(2),
-                    pm: k - d
-                });
+                // 记录单场明细
+                playersMap[name].matches.push({ agent: agentName, role, k, d, a, acs, fk, kd: (k/d).toFixed(2), pm: k - d });
+
+                // 按英雄聚合统计
+                if (!playersMap[name].agentsMap[agentName]) {
+                    playersMap[name].agentsMap[agentName] = { agent: agentName, role, count: 0, k: 0, d: 0, a: 0, acs: 0, fk: 0 };
+                }
+                const ag = playersMap[name].agentsMap[agentName];
+                ag.count += 1;
+                ag.k += k; ag.d += d; ag.a += a; ag.acs += acs; ag.fk += fk;
 
                 playersMap[name].totalK += k;
                 playersMap[name].totalD += d;
@@ -172,13 +180,27 @@
             render(playersMap);
         }
 
+        // 生成约100字的赛训分析
+        function generateAIComment(p, avgKd, avgAcs, totalPM) {
+            let roleSummary = Object.values(p.agentsMap).map(ag => `${ag.agent}(${ag.role})`).join('、');
+            let comment = `【赛训综合评估】该选手共登场 ${p.matches.length} 场，核心英雄池涵盖：${roleSummary}。`;
+            
+            if (avgKd >= 1.2 && totalPM > 0) {
+                comment += `整体对枪压制力极强（综合 K/D 达 ${avgKd}，净胜分 +${totalPM}），ACS 表现亮眼。建议继续巩固当前定位，在战术中给予更多资源倾斜，担当队伍的绝对突破或核心火力点。`;
+            } else if (avgKd >= 1.0) {
+                comment += `整体竞技状态稳定（综合 K/D ${avgKd}），能够很好地完成本职战术任务。建议在后续训练中重点提升残局处理的细节和首杀转化率，进一步扩大对局优势。`;
+            } else {
+                comment += `近期对枪表现略显挣扎（综合 K/D ${avgKd}，净胜分 ${totalPM}），生存率偏低。建议复盘对枪身位与补枪协同，适当优化交战时机，或针对性调整其使用的英雄定位。`;
+            }
+            return comment;
+        }
+
         function render(playersMap) {
             placeholder.classList.add('hidden');
             dashboard.classList.remove('hidden');
             fileInfo.innerText = "数据解析成功 ✅";
             
             let html = '';
-            // 按综合 K/D 降序排列
             const sortedNames = Object.keys(playersMap).sort((a,b) => {
                 return (playersMap[b].totalK/playersMap[b].totalD) - (playersMap[a].totalK/playersMap[a].totalD);
             });
@@ -189,8 +211,13 @@
                 const avgAcs = Math.round(p.totalAcs / p.matches.length);
                 const totalPM = p.totalK - p.totalD;
 
+                // 将该选手玩过的英雄按场次或表现排序
+                const aggregatedAgents = Object.values(p.agentsMap).sort((a, b) => (b.k/b.d) - (a.k/a.d));
+                const aiComment = generateAIComment(p, avgKd, avgAcs, totalPM);
+
                 html += `
                 <div class="player-card rounded-xl shadow-lg overflow-hidden mb-8">
+                    <!-- 顶层汇总 -->
                     <div class="bg-gray-900 p-6 flex flex-col lg:flex-row justify-between items-center gap-6">
                         <div class="flex items-center gap-6">
                             <div class="h-16 w-16 bg-red-600 rounded-full flex items-center justify-center text-2xl font-black italic">
@@ -198,7 +225,7 @@
                             </div>
                             <div>
                                 <h2 class="text-3xl font-black text-white italic tracking-tighter">${name}</h2>
-                                <p class="text-xs text-gray-500 uppercase mt-1">Total Scrims: ${p.matches.length}</p>
+                                <p class="text-xs text-gray-500 uppercase mt-1">Total Scrims: ${p.matches.length} 场</p>
                             </div>
                         </div>
                         
@@ -222,31 +249,53 @@
                         </div>
                     </div>
 
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-sm text-left">
-                            <thead class="bg-gray-800/50 text-gray-500 uppercase text-[10px] tracking-widest">
-                                <tr>
-                                    <th class="px-6 py-4">英雄 Agent</th>
-                                    <th class="px-6 py-4">K / D / A</th>
-                                    <th class="px-6 py-4">K/D 比率</th>
-                                    <th class="px-6 py-4">+/- 差值</th>
-                                    <th class="px-6 py-4">ACS 评分</th>
-                                    <th class="px-6 py-4">首杀 FK</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-800">
-                                ${p.matches.map(m => `
-                                    <tr class="hover:bg-gray-700/30 transition-colors">
-                                        <td class="px-6 py-4 font-bold text-gray-300">${m.agent}</td>
-                                        <td class="px-6 py-4 font-mono">${m.k} / ${m.d} / ${m.a}</td>
-                                        <td class="px-6 py-4 font-bold ${m.kd >= 1 ? 'text-green-400' : 'text-red-500'}">${m.kd}</td>
-                                        <td class="px-6 py-4 font-bold ${m.pm >= 0 ? 'text-green-400' : 'text-red-500'}">${m.pm > 0 ? '+' : ''}${m.pm}</td>
-                                        <td class="px-6 py-4 font-mono text-yellow-600">${m.acs > 0 ? m.acs : '-'}</td>
-                                        <td class="px-6 py-4 font-bold text-blue-500">${m.fk > 0 ? m.fk : '-'}</td>
+                    <!-- 中间：英雄分类汇总表（将同一英雄聚合，并标明定位） -->
+                    <div class="p-6 bg-gray-800/40 border-b border-gray-800">
+                        <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">🎮 英雄定位与池分布聚合</h3>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm text-left">
+                                <thead class="text-gray-500 uppercase text-[10px] tracking-widest border-b border-gray-700">
+                                    <tr>
+                                        <th class="pb-3">英雄 Agent</th>
+                                        <th class="pb-3">定位 Role</th>
+                                        <th class="pb-3">登场次数</th>
+                                        <th class="pb-3">总 K / D / A</th>
+                                        <th class="pb-3">平均 K/D</th>
+                                        <th class="pb-3">平均 ACS</th>
+                                        <th class="pb-3">总首杀 FK</th>
                                     </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody class="divide-y divide-gray-800/60">
+                                    ${aggregatedAgents.map(ag => {
+                                        const agKd = (ag.k / ag.d).toFixed(2);
+                                        const agAcs = Math.round(ag.acs / ag.count);
+                                        const roleClass = getRoleBadgeClass(ag.role);
+                                        return `
+                                        <tr>
+                                            <td class="py-3 font-bold text-white flex items-center gap-2">
+                                                ${ag.agent}
+                                            </td>
+                                            <td class="py-3"><span class="role-badge ${roleClass}">${ag.role}</span></td>
+                                            <td class="py-3 font-mono text-gray-400">${ag.count} 场</td>
+                                            <td class="py-3 font-mono text-gray-300">${ag.k} / ${ag.d} / ${ag.a}</td>
+                                            <td class="py-3 font-bold ${agKd >= 1 ? 'text-green-400' : 'text-red-500'}">${agKd}</td>
+                                            <td class="py-3 font-mono text-yellow-500">${agAcs > 0 ? agAcs : '-'}</td>
+                                            <td class="py-3 font-bold text-blue-400">${ag.fk}</td>
+                                        </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 底部：约100字的AI分析评语 -->
+                    <div class="p-6 bg-gray-900/80 border-t border-gray-800 text-sm text-gray-300 leading-relaxed flex items-start gap-3">
+                        <span class="text-xl">💡</span>
+                        <div>
+                            <span class="font-bold text-red-400 mr-2">教练分析报告：</span>
+                            ${aiComment}
+                        </div>
                     </div>
                 </div>
                 `;
