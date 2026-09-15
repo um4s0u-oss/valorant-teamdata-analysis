@@ -52,18 +52,24 @@
         </div>
     </div>
 
-    <script>
+<script>
         // Valorant 英雄定位字典库
         const agentRoles = {
             // 突击位 (Duelist)
-            'Jett/捷风': '突击位', 'Reyna/蕾娜': '突击位', 'Raze/雷兹': '突击位', 'Phoenix/不死鸟': '突击位', 'Yoru/夜露': '突击位', 'Neon/霓虹': '突击位', 'Iso/壹决': '突击位',
+            'Jett': '突击位', 'Reyna': '突击位', 'Raze': '突击位', 'Phoenix': '突击位', 'Yoru': '突击位', 'Neon': '突击位', 'Iso': '突击位', 
             // 先锋位 (Initiator)
-            'Sova/猎枭': '先锋位', 'Breach/铁壁': '先锋位', 'Skye/斯凯': '先锋位', 'KAY/O/ K/O': '先锋位', 'Fade/黑梦': '先锋位', 'Gekko/盖可': '先锋位', 'Tejo/钛狐': '先锋位',
+            'Sova': '先锋位', 'Breach': '先锋位', 'Skye': '先锋位', 'KAY/O': '先锋位', 'Fade': '先锋位', 'Gekko': '先锋位', 'Tejo': '先锋位',
             // 控场/烟位 (Controller)
-            'Brimstone/烟男': '烟位', 'Omen/欧门': '烟位', 'Viper/蝰蛇': '烟位', 'Astra/亚星卓': '烟位', 'Harbor/海神': '烟位', 'Clove/暮蝶': '烟位','Miks/迷核': '烟位',
+            'Brimstone': '烟位', 'Omen': '烟位', 'Viper': '烟位', 'Astra': '烟位', 'Harbor': '烟位', 'Clove': '烟位','Miks': '烟位',
             // 哨位 (Sentinel)
-            'Cypher/保安/零': '哨位', 'Killjoy/奇乐': '哨位', 'Sage/贤者/奶妈': '哨位', 'Chamber/钱包': '哨位', 'Deadlock/钢索': '哨位', 'Vyse/维斯': '哨位', 'Veto/禁灭': '哨位',
+            'Cypher': '哨位', 'Killjoy': '哨位', 'Sage': '哨位', 'Chamber': '哨位', 'Deadlock': '哨位', 'Vyse': '哨位','Veto': '哨位',
         };
+
+        function getAgentRole(agentName) {
+            if (!agentName) return '未知位';
+            const cleanName = agentName.trim();
+            return agentRoles[cleanName] || '通用位';
+        }
 
 
         function getRoleBadgeClass(role) {
