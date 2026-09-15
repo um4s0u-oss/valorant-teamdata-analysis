@@ -65,11 +65,6 @@
             'Cypher/保安/零': '哨位', 'Killjoy/奇乐': '哨位', 'Sage/贤者/奶妈': '哨位', 'Chamber/钱包': '哨位', 'Deadlock/钢索': '哨位', 'Vyse/维斯': '哨位', 'Veto/禁灭': '哨位',
         };
 
-        function getAgentRole(agentName) {
-            if (!agentName) return '未知位';
-            const cleanName = agentName.trim();
-            return agentRoles[cleanName] || '通用位';
-        }
 
         function getRoleBadgeClass(role) {
             switch(role) {
