@@ -1,0 +1,258 @@
+@@ -0,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Valorant 战队数据专业分析系统 v2.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root { --valo-red: #ff4655; --dark-bg: #0f1923; }
+        body { background-color: var(--dark-bg); color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .player-card { background-color: #1f2937; border-left: 5px solid var(--valo-red); transition: transform 0.2s; }
+        .player-card:hover { transform: scale(1.01); }
+        .drop-zone { border: 2px dashed #4b5563; background: #1a232e; cursor: pointer; transition: all 0.3s; }
+        .drop-zone:hover, .drop-zone.drag-over { border-color: var(--valo-red); background: #252e3a; }
+        .btn-valo { background-color: var(--valo-red); color: white; padding: 10px 24px; border-radius: 4px; font-weight: bold; cursor: pointer; display: inline-block; }
+        .btn-valo:hover { background-color: #e03e4b; }
+    </style>
+</head>
+<body class="p-4 md:p-10">
+    <div class="max-w-6xl mx-auto">
+        <div class="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
+            <div>
+                <h1 class="text-4xl font-black italic tracking-tighter text-white">PRO <span class="text-red-500">ANALYTICS</span></h1>
+                <p class="text-gray-400 text-sm mt-1">支持：姓名, 英雄, K, D, A, ACS, 首杀, +/-</p>
+            </div>
+            <div id="fileInfo" class="text-sm font-mono text-gray-500">等待导入数据...</div>
+        </div>
+
+        <div id="dropZone" class="drop-zone rounded-2xl p-12 text-center shadow-2xl mb-12">
+            <div class="text-6xl mb-6">📊</div>
+            <h2 class="text-2xl font-bold mb-4">将您的训练赛 CSV 文件拖到这里</h2>
+            <p class="text-gray-400 mb-8">或者点击下方的红色按钮选择文件</p>
+            
+            <label for="fileInput" class="btn-valo">选择电脑上的文件</label>
+            <input type="file" id="fileInput" accept=".csv" class="hidden">
+            
+            <div class="mt-6 text-xs text-gray-500">
+                提示：请确保 Excel 第一行包含“姓名,K,D,A”等表头
+            </div>
+        </div>
+
+        <div id="dashboard" class="space-y-10 hidden">
+            </div>
+
+        <div id="placeholder" class="py-20 text-center text-gray-600">
+            <p>暂无数据，请先上传您的赛后统计表格</p>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const dashboard = document.getElementById('dashboard');
+        const placeholder = document.getElementById('placeholder');
+        const fileInfo = document.getElementById('fileInfo');
+
+        // 1. 阻止浏览器默认打开文件的行为
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            window.addEventListener(eventName, e => {
+                e.preventDefault();
+                e.stopPropagation();
+            }, false);
+        });
+
+        // 2. 拖拽高亮效果
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.add('drag-over'), false);
+        });
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.remove('drag-over'), false);
+        });
+
+        // 3. 处理文件放置
+        dropZone.addEventListener('drop', (e) => {
+            const file = e.dataTransfer.files[0];
+            handleFile(file);
+        }, false);
+
+        // 4. 处理点击上传按钮
+        fileInput.addEventListener('change', (e) => {
+            handleFile(e.target.files[0]);
+        });
+
+        function handleFile(file) {
+            if (!file) return;
+            if (!file.name.toLowerCase().endsWith('.csv')) {
+                alert('请上传 .csv 格式的文件！');
+                return;
+            }
+
+            fileInfo.innerText = `正在读取: ${file.name}...`;
+            
+            const reader = new FileReader();
+            // 尝试以 GBK 读取 (适用于大多数中文 Excel CSV)
+            reader.readAsText(file, 'GBK');
+            
+            reader.onload = function(e) {
+                const content = e.target.result;
+                // 如果读取结果包含奇怪字符，提示用户可能是编码问题
+                if (content.includes('')) {
+                    console.warn("检测到乱码，尝试切换编码读取...");
+                    const readerRetry = new FileReader();
+                    readerRetry.readAsText(file, 'UTF-8');
+                    readerRetry.onload = (e) => parseCSV(e.target.result);
+                } else {
+                    parseCSV(content);
+                }
+            };
+        }
+
+        function parseCSV(text) {
+            // 处理换行符，将字符串切成行
+            const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+            if (lines.length < 2) {
+                alert("文件内容不足（需要表头和至少一行数据）");
+                return;
+            }
+
+            // 获取表头并清理不可见字符
+            const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+            console.log("识别到表头:", headers);
+
+            // 定位关键字段索引
+            const idx = {
+                name: headers.indexOf('姓名'),
+                agent: headers.indexOf('英雄'),
+                k: headers.indexOf('K'),
+                d: headers.indexOf('D'),
+                a: headers.indexOf('A'),
+                acs: headers.indexOf('ACS'),
+                fk: headers.indexOf('首杀'),
+                pm: headers.indexOf('+/-')
+            };
+
+            if (idx.name === -1 || idx.k === -1 || idx.d === -1) {
+                alert("错误：CSV 文件必须包含「姓名」、「K」、「D」三列。");
+                return;
+            }
+
+            // 数据解析与分组
+            const playersMap = {};
+            lines.slice(1).forEach(line => {
+                const row = line.split(',').map(v => v.trim().replace(/"/g, ''));
+                const name = row[idx.name];
+                if (!name) return;
+
+                if (!playersMap[name]) {
+                    playersMap[name] = { matches: [], totalK:0, totalD:0, totalA:0, totalAcs:0, totalFk:0 };
+                }
+
+                const k = parseInt(row[idx.k]) || 0;
+                const d = parseInt(row[idx.d]) || 1; // 避免除以0
+                const a = (idx.a !== -1) ? parseInt(row[idx.a]) || 0 : 0;
+                const acs = (idx.acs !== -1) ? parseInt(row[idx.acs]) || 0 : 0;
+                const fk = (idx.fk !== -1) ? parseInt(row[idx.fk]) || 0 : 0;
+
+                playersMap[name].matches.push({
+                    agent: (idx.agent !== -1) ? row[idx.agent] : '未知英雄',
+                    k, d, a, acs, fk,
+                    kd: (k/d).toFixed(2),
+                    pm: k - d
+                });
+
+                playersMap[name].totalK += k;
+                playersMap[name].totalD += d;
+                playersMap[name].totalA += a;
+                playersMap[name].totalAcs += acs;
+                playersMap[name].totalFk += fk;
+            });
+
+            render(playersMap);
+        }
+
+        function render(playersMap) {
+            placeholder.classList.add('hidden');
+            dashboard.classList.remove('hidden');
+            fileInfo.innerText = "数据解析成功 ✅";
+            
+            let html = '';
+            // 按综合 K/D 降序排列
+            const sortedNames = Object.keys(playersMap).sort((a,b) => {
+                return (playersMap[b].totalK/playersMap[b].totalD) - (playersMap[a].totalK/playersMap[a].totalD);
+            });
+
+            sortedNames.forEach(name => {
+                const p = playersMap[name];
+                const avgKd = (p.totalK / p.totalD).toFixed(2);
+                const avgAcs = Math.round(p.totalAcs / p.matches.length);
+                const totalPM = p.totalK - p.totalD;
+
+                html += `
+                <div class="player-card rounded-xl shadow-lg overflow-hidden mb-8">
+                    <div class="bg-gray-900 p-6 flex flex-col lg:flex-row justify-between items-center gap-6">
+                        <div class="flex items-center gap-6">
+                            <div class="h-16 w-16 bg-red-600 rounded-full flex items-center justify-center text-2xl font-black italic">
+                                ${name[0].toUpperCase()}
+                            </div>
+                            <div>
+                                <h2 class="text-3xl font-black text-white italic tracking-tighter">${name}</h2>
+                                <p class="text-xs text-gray-500 uppercase mt-1">Total Scrims: ${p.matches.length}</p>
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+                            <div>
+                                <p class="text-[10px] text-gray-500 uppercase font-bold mb-1">Overall K/D</p>
+                                <p class="text-2xl font-black ${avgKd >= 1.2 ? 'text-green-400' : (avgKd < 0.9 ? 'text-red-500' : 'text-white')}">${avgKd}</p>
+                            </div>
+                            <div>
+                                <p class="text-[10px] text-gray-500 uppercase font-bold mb-1">Total +/-</p>
+                                <p class="text-2xl font-black ${totalPM >= 0 ? 'text-green-400' : 'text-red-500'}">${totalPM > 0 ? '+' : ''}${totalPM}</p>
+                            </div>
+                            <div>
+                                <p class="text-[10px] text-gray-500 uppercase font-bold mb-1">Avg ACS</p>
+                                <p class="text-2xl font-black text-yellow-500">${avgAcs > 0 ? avgAcs : '-'}</p>
+                            </div>
+                            <div>
+                                <p class="text-[10px] text-gray-500 uppercase font-bold mb-1">Total FK</p>
+                                <p class="text-2xl font-black text-blue-400">${p.totalFk > 0 ? p.totalFk : '-'}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left">
+                            <thead class="bg-gray-800/50 text-gray-500 uppercase text-[10px] tracking-widest">
+                                <tr>
+                                    <th class="px-6 py-4">英雄 Agent</th>
+                                    <th class="px-6 py-4">K / D / A</th>
+                                    <th class="px-6 py-4">K/D 比率</th>
+                                    <th class="px-6 py-4">+/- 差值</th>
+                                    <th class="px-6 py-4">ACS 评分</th>
+                                    <th class="px-6 py-4">首杀 FK</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-800">
+                                ${p.matches.map(m => `
+                                    <tr class="hover:bg-gray-700/30 transition-colors">
+                                        <td class="px-6 py-4 font-bold text-gray-300">${m.agent}</td>
+                                        <td class="px-6 py-4 font-mono">${m.k} / ${m.d} / ${m.a}</td>
+                                        <td class="px-6 py-4 font-bold ${m.kd >= 1 ? 'text-green-400' : 'text-red-500'}">${m.kd}</td>
+                                        <td class="px-6 py-4 font-bold ${m.pm >= 0 ? 'text-green-400' : 'text-red-500'}">${m.pm > 0 ? '+' : ''}${m.pm}</td>
+                                        <td class="px-6 py-4 font-mono text-yellow-600">${m.acs > 0 ? m.acs : '-'}</td>
+                                        <td class="px-6 py-4 font-bold text-blue-500">${m.fk > 0 ? m.fk : '-'}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                `;
+            });
+            dashboard.innerHTML = html;
+        }
+    </script>
+</body>
+</html>
