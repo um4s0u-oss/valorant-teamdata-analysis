@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Valorant 战队数据专业分析系统 v13.0</title>
-    <!-- 引入官方 Excel 解析库，支持直接读取 .xlsx / .xls 文件 -->
+    <title>Valorant 战队数据专业分析系统 v14.0</title>
+    <!-- 引入官方 SheetJS 库，支持二进制 Excel 与多 Sheet 解析 -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
         :root { --valo-red: #ff4655; --dark-bg: #0f1923; --card-bg: #1f2937; }
@@ -28,9 +28,13 @@
         .btn-danger { background-color: #7f1d1d; border: 1px solid #991b1b; color: #fca5a5; padding: 8px 14px; border-radius: 6px; font-size: 13px; font-weight: bold; border: none; cursor: pointer; }
         .btn-danger:hover { background-color: #991b1b; }
 
-        .drop-zone { border: 2px dashed #4b5563; background: #1a232e; border-radius: 16px; padding: 40px; text-align: center; cursor: pointer; margin-bottom: 30px; transition: 0.2s; }
+        .drop-zone { border: 2px dashed #4b5563; background: #1a232e; border-radius: 16px; padding: 30px; text-align: center; cursor: pointer; margin-bottom: 24px; transition: 0.2s; }
         .drop-zone:hover, .drop-zone.dragover { border-color: var(--valo-red); background: #232d3b; }
 
+        /* 多 Sheet 切换控制条 */
+        .sheet-selector-bar { background: #1f2937; border: 1px solid #374151; padding: 12px 20px; border-radius: 10px; margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+        .sheet-selector-title { font-size: 14px; font-weight: bold; color: #facc15; display: flex; align-items: center; gap: 8px; }
+        
         .player-card { background-color: var(--card-bg); border-left: 5px solid var(--valo-red); border-radius: 12px; margin-bottom: 24px; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3); }
         .player-header { background: #111827; padding: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; }
         .player-info { display: flex; align-items: center; gap: 16px; }
@@ -92,13 +96,22 @@
             <div id="fileInfo" style="font-size: 13px; font-weight: bold; color: #facc15; background: #111827; padding: 6px 12px; border-radius: 6px; border: 1px solid #374151;">等待导入数据...</div>
         </div>
 
-        <!-- 拖拽与上传区域（支持 .xlsx, .xls, .csv） -->
+        <!-- 拖拽与上传区域 -->
         <div id="dropZone" class="drop-zone" onclick="document.getElementById('fileInput').click()">
-            <div style="font-size: 40px; margin-bottom: 10px;">📊</div>
-            <h3 style="font-size: 18px; margin-bottom: 6px;">点击或拖入 Excel (.xlsx/.xls) 或 CSV 文件</h3>
-            <p style="color: #9ca3af; font-size: 13px; margin-bottom: 16px;">全面兼容表格数据，即拖即用</p>
+            <div style="font-size: 36px; margin-bottom: 8px;">📊</div>
+            <h3 style="font-size: 17px; margin-bottom: 4px;">点击或拖入 Excel (.xlsx/.xls) 或 CSV 文件</h3>
+            <p style="color: #9ca3af; font-size: 13px; margin-bottom: 12px;">自动读取多表数据，支持自由切换选择</p>
             <button class="btn-valo">选择表格文件</button>
             <input type="file" id="fileInput" accept=".xlsx, .xls, .csv" style="display: none;" onchange="handleFileSelect(event)">
+        </div>
+
+        <!-- 多工作表 Sheet 自由切换栏 -->
+        <div id="sheetBar" class="sheet-selector-bar" style="display: none;">
+            <div class="sheet-selector-title">
+                <span>📑</span>
+                <span>发现多工作表，当前正在查看：</span>
+            </div>
+            <select id="sheetSelect" onchange="switchSheet(this.value)" style="min-width: 220px; font-weight: bold; border-color: var(--valo-red);"></select>
         </div>
 
         <!-- 数据面板 -->
@@ -138,6 +151,7 @@
 
         const DEFAULT_ACC = ["默认战队分析", "一队档案", "青训档案"];
         let currentAccount = localStorage.getItem('valo_active_acc') || DEFAULT_ACC[0];
+        let globalWorkbook = null; // 全局变量，用于保存加载的 Excel 文件结构
 
         function getAccounts() {
             try {
@@ -157,7 +171,6 @@
             select.innerHTML = accs.map(a => `<option value="${a}" ${a === currentAccount ? 'selected' : ''}>${a}</option>`).join('');
             document.getElementById('currentAccountDisplay').innerText = currentAccount;
 
-            // 初始化拖拽响应
             setupDragAndDrop();
 
             const data = loadData(currentAccount);
@@ -171,7 +184,6 @@
             }
         }
 
-        // 绑定拖拽事件
         function setupDragAndDrop() {
             const dz = document.getElementById('dropZone');
             ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
@@ -185,8 +197,7 @@
             });
             dz.addEventListener('drop', (e) => {
                 const dt = e.dataTransfer;
-                const files = dt.files;
-                if (files.length) processFile(files[0]);
+                if (dt.files.length) processFile(dt.files[0]);
             });
         }
 
@@ -205,6 +216,7 @@
         function clearCurrentAccountData() {
             if (confirm(`确认清空「${currentAccount}」下的所有档案数据？`)) {
                 localStorage.removeItem('valo_data_' + currentAccount);
+                document.getElementById('sheetBar').style.display = 'none';
                 initUI();
             }
         }
@@ -219,9 +231,8 @@
             if (file) processFile(file);
         }
 
-        // 核心文件处理入口：支持直接读取 .xlsx, .xls, .csv
         function processFile(file) {
-            document.getElementById('fileInfo').innerText = "解析中: " + file.name;
+            document.getElementById('fileInfo').innerText = "读取中: " + file.name;
             const fileName = file.name.toLowerCase();
 
             if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
@@ -229,24 +240,39 @@
                 reader.onload = function(e) {
                     try {
                         const data = new Uint8Array(e.target.result);
-                        const workbook = XLSX.read(data, { type: 'array' });
-                        // 默认读取第一个或包含“数据”的工作表 Sheet
-                        let sheetName = workbook.SheetNames[0];
-                        for(let name of workbook.SheetNames) {
-                            if(name.includes('数据') || name.includes('记录')) { sheetName = name; break; }
+                        globalWorkbook = XLSX.read(data, { type: 'array' });
+                        
+                        // 过滤出有意义的工作表（排除系统保留表）
+                        const validSheets = globalWorkbook.SheetNames.filter(n => !n.startsWith('Wps') && !n.startsWith('Sheet7'));
+                        
+                        if (validSheets.length > 0) {
+                            // 渲染工作表下拉选择框
+                            const sheetSelect = document.getElementById('sheetSelect');
+                            sheetSelect.innerHTML = validSheets.map(s => `<option value="${s}">${s}</option>`).join('');
+                            document.getElementById('sheetBar').style.display = 'flex';
+
+                            // 优先解析包含“选手”或“数据”的工作表，否则取第一个
+                            let targetSheet = validSheets[0];
+                            for (let s of validSheets) {
+                                if (s.includes('选手') || s.includes('记录') || s.includes('战绩')) {
+                                    targetSheet = s;
+                                    break;
+                                }
+                            }
+                            sheetSelect.value = targetSheet;
+                            parseSheetByName(targetSheet, file.name);
+                        } else {
+                            alert("Excel 文件中没有包含可读取的数据页");
                         }
-                        const worksheet = workbook.Sheets[sheetName];
-                        // 转换为二维数组并进行统计分析
-                        const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-                        parseStructuredRows(rows, file.name);
                     } catch(err) {
-                        alert("Excel 文件解析失败，请确保格式正确");
+                        alert("Excel 文件解析失败，请确保格式正常");
                         console.error(err);
                     }
                 };
                 reader.readAsArrayBuffer(file);
             } else {
                 // 读取 CSV 格式
+                document.getElementById('sheetBar').style.display = 'none';
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     const text = e.target.result;
@@ -258,20 +284,39 @@
             }
         }
 
-        // 解析二维矩阵数据（无论是 Excel 解析出来的还是 CSV 解析出来的）
-        function parseStructuredRows(rows, fileName) {
-            if (!rows || rows.length < 2) { alert("文件中无有效数据"); return; }
+        // 自由切换 Sheet 的响应函数
+        function switchSheet(sheetName) {
+            if (globalWorkbook) {
+                parseSheetByName(sheetName, "工作表切换");
+            }
+        }
+
+        // 根据 Sheet 名称提取数据并解析
+        function parseSheetByName(sheetName, fileLabel) {
+            const worksheet = globalWorkbook.Sheets[sheetName];
+            const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+            parseStructuredRows(rows, `${fileLabel} [${sheetName}]`);
+        }
+
+        // 二维数组精准表头提取与防错计算引擎（彻底解决 A 与 ACS 错位问题）
+        function parseStructuredRows(rows, sourceTag) {
+            if (!rows || rows.length < 2) { 
+                alert("选中的工作表中无有效表格数据"); 
+                return; 
+            }
 
             let headerIdx = -1;
             for (let i = 0; i < Math.min(10, rows.length); i++) {
+                if (!rows[i]) continue;
                 const rowStr = rows[i].join(' ');
                 if (rowStr.includes('击杀') || rowStr.includes('选手') || rowStr.includes('K')) {
-                    headerIdx = i; break;
+                    headerIdx = i; 
+                    break;
                 }
             }
 
             if (headerIdx === -1) {
-                alert("未检测到有效表头，请确认表格中是否包含【选手】、【击杀】、【死亡】列！");
+                alert(`未能在当前数据表中检索到表头，请确认是否包含【选手】、【击杀】、【死亡】等列。`);
                 return;
             }
 
@@ -287,12 +332,14 @@
             const agentCol = findExactCol(['角色', '英雄', '特工', 'agent']);
             const kCol = findExactCol(['击杀', 'k', 'kills']);
             const dCol = findExactCol(['死亡', 'd', 'deaths']);
+            
+            // 严密隔离助攻（A）与 ACS 评分列
             const aCol = findExactCol(['助攻', 'a', 'assists']);
             const acsCol = findExactCol(['acs', '战斗均分', '评分', '得分']);
             const fkCol = findExactCol(['首杀', 'fk', 'firstkill']);
 
             if (nameCol === -1 || kCol === -1 || dCol === -1) {
-                alert(`表头定位失败！识别到的列: [${headers.join(', ')}]\n必须包含【选手】、【击杀】、【死亡】。`);
+                alert(`表头定位异常！读取到的列为: [${headers.join(', ')}]\n请包含【选手】、【击杀】、【死亡】。`);
                 return;
             }
 
@@ -340,7 +387,7 @@
 
             saveData(currentAccount, playersMap);
             render(playersMap);
-            document.getElementById('fileInfo').innerText = "导入成功: " + fileName + " ✅";
+            document.getElementById('fileInfo').innerText = "加载成功: " + sourceTag + " ✅";
         }
 
         function generatePlayerAdvice(kd, avgAcs, avgFk) {
@@ -479,7 +526,7 @@
                         </table>
                     </div>
 
-                    <!-- 选手评价与优化调整建议 -->
+                    <!-- 赛训评价与优化建议 -->
                     <div class="advice-box">
                         <div class="advice-title">💡 选手综合评价与优化建议</div>
                         <div class="advice-content">
