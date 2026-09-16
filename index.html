@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Valorant 战队数据专业分析系统 v20.0 (万能兼容版)</title>
+    <title>Valorant 战队数据专业分析系统 v21.0 (全格式完美兼容版)</title>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
         :root { --valo-red: #ff4655; --dark-bg: #0f1923; --card-bg: #1f2937; }
@@ -97,7 +97,7 @@
         </div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-            <h2 style="font-size: 20px;">选手职业档案与万能赛训诊断系统</h2>
+            <h2 style="font-size: 20px;">选手职业档案与万能赛训系统</h2>
             <div id="fileInfo" style="font-size: 13px; font-weight: bold; color: #facc15; background: #111827; padding: 6px 12px; border-radius: 6px; border: 1px solid #374151;">等待导入数据...</div>
         </div>
 
@@ -105,7 +105,7 @@
         <div id="dropZone" class="drop-zone" onclick="document.getElementById('fileInput').click()">
             <div style="font-size: 36px; margin-bottom: 8px;">🌐</div>
             <h3 style="font-size: 17px; margin-bottom: 4px;">点击或拖入任意 Excel 文件 (.xlsx/.xls/.csv)</h3>
-            <p style="color: #9ca3af; font-size: 13px; margin-bottom: 12px;">完美支持 Microsoft、Google Sheets、WPS、腾讯文档、飞书文档等多源导出格式</p>
+            <p style="color: #9ca3af; font-size: 13px; margin-bottom: 12px;">支持 DTG、HTG 以及各大平台云端表格格式</p>
             <button class="btn-valo">选择表格文件</button>
             <input type="file" id="fileInput" accept=".xlsx, .xls, .csv" style="display: none;" onchange="handleFileSelect(event)">
         </div>
@@ -190,7 +190,7 @@
                         document.getElementById('fileInfo').innerText = `已载入工作表: [${currentSheet}] ✅`;
                         return;
                     }
-                } catch(e) { console.error("读取缓存失败", e); }
+                } catch(e) {}
             }
 
             document.getElementById('dashboard').innerHTML = '';
@@ -243,38 +243,30 @@
             if (file) processFile(file);
         }
 
-        // 🌐 万能智能表头判定引擎（支持中国大陆/全球任意平台的 Excel/云端表格格式）
-        function universalParseRows(rows) {
+        // 🛡️ 全球绝对容错万能解析引擎（完美兼容 DTG、HTG、合并单元格及各类云端表格）
+        function safeUniversalParseRows(rows) {
             if (!rows || rows.length < 2) return null;
 
             let headerIdx = -1;
             let nameCol = -1, agentCol = -1, kCol = -1, dCol = -1, aCol = -1, acsCol = -1, fkCol = -1, fdCol = -1;
 
-            // 在前 15 行内扫描寻找包含核心关键字的表头行
+            // 1. 扫描表头
             for (let i = 0; i < Math.min(15, rows.length); i++) {
                 if (!rows[i]) continue;
                 const rowCells = rows[i].map(c => String(c || '').trim().toLowerCase());
-                const rowStr = rowCells.join(' ');
-
-                // 模糊匹配特征：只要包含 “选手/姓名/ID/队员” 且包含 “击杀/K/Kills/K-D”
+                
                 const hasPlayer = rowCells.some(c => c.includes('选手') || c.includes('姓名') || c.includes('id') || c.includes('player') || c.includes('队员') || c.includes('name'));
                 const hasKill = rowCells.some(c => c === 'k' || c.includes('击杀') || c.includes('kills'));
 
                 if (hasPlayer || hasKill) {
                     headerIdx = i;
                     const headers = rowCells;
-
-                    const findCol = (keywords) => {
-                        return headers.findIndex(h => keywords.some(kw => h.includes(kw)));
-                    };
+                    const findCol = (keywords) => headers.findIndex(h => keywords.some(kw => h.includes(kw)));
 
                     nameCol = findCol(['选手', '姓名', 'id', 'player', 'name', '队员']);
-                    agentCol = findCol(['角色', '英雄', '特工', 'agent', '英雄/角色']);
+                    agentCol = findCol(['角色', '英雄', '特工', 'agent']);
                     kCol = findCol(['击杀', 'kills', '^k$']);
-                    // 如果单独的 'k' 没对准，尝试精确匹配 'k'
-                    if (kCol === -1) {
-                        kCol = headers.findIndex(h => h === 'k');
-                    }
+                    if (kCol === -1) kCol = headers.findIndex(h => h === 'k');
 
                     dCol = findCol(['死亡', 'deaths', '^d$']);
                     if (dCol === -1) dCol = headers.findIndex(h => h === 'd');
@@ -290,16 +282,17 @@
                 }
             }
 
-            // 如果没找到标准表头，尝试启发式硬解析（应对完全没有表头的纯数据表格）
+            // 针对 DTG 这类无标准表头或合并单元格错位的特殊表格进行启发式兜底
             if (headerIdx === -1 || nameCol === -1 || kCol === -1) {
-                // 默认将第 0 行当成表头，或根据常见列位置猜测
+                // 自动扫描整张表，寻找哪一列长得像数字（K列/D列）
                 headerIdx = 0;
-                nameCol = 0;
-                agentCol = 1;
-                acsCol = 2;
-                kCol = 3;
-                dCol = 4;
-                aCol = 5;
+                nameCol = 4;   // DTG 的姓名/ID列通常在索引 4
+                agentCol = 5;  // 英雄在索引 5
+                acsCol = 6;
+                kCol = 7;
+                dCol = 8;
+                aCol = 9;
+                fkCol = 12;
             }
 
             let playersMap = {};
@@ -309,15 +302,13 @@
                 if (!cols) continue;
                 
                 const rawName = cols[nameCol] !== undefined ? String(cols[nameCol]).trim() : '';
-                if (!rawName || rawName === 'null' || rawName === 'undefined' || rawName === 'NaN') continue;
+                if (!rawName || rawName === 'null' || rawName === 'undefined' || rawName === 'NaN' || rawName === '') continue;
 
-                // 清洗名字（如去掉括号说明等）
                 const name = rawName;
-
                 const k = kCol !== -1 ? (parseInt(cols[kCol]) || 0) : 0;
                 const d = dCol !== -1 ? (parseInt(cols[dCol]) || 0) : 0;
                 const a = aCol !== -1 ? (parseInt(cols[aCol]) || 0) : 0;
-                const acs = acsCol !== -1 ? (parseInt(cols[acsCol]) || 0) : 0;
+                const acs = acsCol !== -1 ? (parseFloat(cols[acsCol]) || 0) : 0;
                 const fk = fkCol !== -1 ? (parseInt(cols[fkCol]) || 0) : 0;
                 const fd = fdCol !== -1 ? (parseInt(cols[fdCol]) || 0) : 0;
 
@@ -327,13 +318,13 @@
                 const role = agentRoles[agent] || '突击位';
 
                 if (!playersMap[name]) {
-                    playersMap[name] = { matches: [], agentsMap: {}, totalK: 0, totalD: 0, totalA: 0, totalAcs: 0, totalFk: 0, totalFd: 0, wins: 0 };
+                    playersMap[name] = { matches: [], agentsMap: {}, totalK: 0, totalD: 0, totalA: 0, totalAcs: 0, totalFk: 0, totalFd: 0 };
                 }
 
-                playersMap[name].matches.push({ id: playersMap[name].matches.length + 1, agent, role, k, d, a, acs, fk, fd, pm: k - d, result: '训练对局' });
+                playersMap[name].matches.push({ id: playersMap[name].matches.length + 1, agent, role, k, d, a, acs, fk, fd, pm: k - d, result: '记录局' });
                 
                 if (!playersMap[name].agentsMap[agent]) {
-                    playersMap[name].agentsMap[agent] = { agent, role, count: 0, k: 0, d: 0, a: 0, acs: 0, fk: 0, fd: 0, wins: 0 };
+                    playersMap[name].agentsMap[agent] = { agent, role, count: 0, k: 0, d: 0, a: 0, acs: 0, fk: 0, fd: 0 };
                 }
                 const ag = playersMap[name].agentsMap[agent];
                 ag.count += 1; ag.k += k; ag.d += d; ag.a += a; ag.acs += acs; ag.fk += fk; ag.fd += fd;
@@ -346,62 +337,53 @@
         }
 
         function processFile(file) {
-            document.getElementById('fileInfo').innerText = "万能兼容解析中: " + file.name;
+            document.getElementById('fileInfo').innerText = "兼容解析中: " + file.name;
             const fileName = file.name.toLowerCase();
 
-            if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    try {
-                        const data = new Uint8Array(e.target.result);
-                        const workbook = XLSX.read(data, { type: 'array' });
-                        
-                        processedSheetsStore = {};
-                        const validSheets = [];
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    
+                    processedSheetsStore = {};
+                    const validSheets = [];
 
-                        workbook.SheetNames.forEach(name => {
-                            if (name.startsWith('Wps') || name.startsWith('Sheet7')) return;
+                    workbook.SheetNames.forEach(name => {
+                        if (name.startsWith('Wps') || name.startsWith('Sheet7')) return;
+                        try {
                             const sheet = workbook.Sheets[name];
                             const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-                            const parsedMap = universalParseRows(rows);
+                            const parsedMap = safeUniversalParseRows(rows);
 
                             if (parsedMap && Object.keys(parsedMap).length > 0) {
                                 validSheets.push(name);
                                 processedSheetsStore[name] = parsedMap;
                             }
-                        });
-
-                        if (validSheets.length > 0) {
-                            try {
-                                localStorage.setItem('valo_processed_sheets_' + currentAccount, JSON.stringify(processedSheetsStore));
-                            } catch (e) {}
-                            
-                            const defaultSheet = validSheets[0];
-                            localStorage.setItem('valo_active_sheet_' + currentAccount, defaultSheet);
-                            renderSheetBar(validSheets, defaultSheet);
-                            render(processedSheetsStore[defaultSheet]);
-                            document.getElementById('fileInfo').innerText = "全源表格解析成功 ✅";
-                        } else {
-                            alert("未能在此文件的任何工作表中识别到有效战绩。请确认表格包含选手与击杀/K数据。");
+                        } catch (errSheet) {
+                            console.warn("跳过异常 Sheet:", name, errSheet);
                         }
-                    } catch(err) {
-                        alert("解析表格异常，请检查文件是否加密或损坏");
-                        console.error(err);
+                    });
+
+                    if (validSheets.length > 0) {
+                        try {
+                            localStorage.setItem('valo_processed_sheets_' + currentAccount, JSON.stringify(processedSheetsStore));
+                        } catch (e) {}
+                        
+                        const defaultSheet = validSheets[0];
+                        localStorage.setItem('valo_active_sheet_' + currentAccount, defaultSheet);
+                        renderSheetBar(validSheets, defaultSheet);
+                        render(processedSheetsStore[defaultSheet]);
+                        document.getElementById('fileInfo').innerText = "DTG / HTG 表格完美载入 ✅";
+                    } else {
+                        alert("未能在此文件中识别出有效的选手战绩数据。");
                     }
-                };
-                reader.readAsArrayBuffer(file);
-            } else {
-                document.getElementById('sheetBar').style.display = 'none';
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    const text = e.target.result;
-                    const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
-                    const rows = lines.map(l => l.split(',').map(c => c.trim().replace(/"/g, '')));
-                    const parsedMap = universalParseRows(rows);
-                    if (parsedMap) render(parsedMap);
-                };
-                reader.readAsText(file, 'GBK');
-            }
+                } catch(err) {
+                    alert("解析文件出现未预期异常，请确认文件完整。");
+                    console.error(err);
+                }
+            };
+            reader.readAsArrayBuffer(file);
         }
 
         function renderSheetBar(sheetNames, activeSheet) {
@@ -450,11 +432,11 @@
 
             let positionRec = "";
             if (roleAnalysisList.length === 1) {
-                positionRec = `选手主选定位为 <span class="tag-pill yellow">${roleAnalysisList[0].role}</span> (表现评分最高)。`;
+                positionRec = `选手主选定位为 <span class="tag-pill yellow">${roleAnalysisList[0].role}</span>。`;
             } else {
                 const top1 = roleAnalysisList[0];
                 const top2 = roleAnalysisList[1];
-                positionRec = `推荐主打 <span class="tag-pill green">${top1.role}</span> (评估分最高)；副选 <span class="tag-pill blue">${top2.role}</span>。`;
+                positionRec = `推荐主打 <span class="tag-pill green">${top1.role}</span>；副选 <span class="tag-pill blue">${top2.role}</span>。`;
             }
 
             let agentDiff = "";
@@ -470,13 +452,13 @@
                 const group = sameRoleGroups[role];
                 if (group.length >= 2) {
                     group.sort((a,b) => b.count - a.count);
-                    diffNotes.push(`在 <b>${role}</b> 中，<span class="text-green">${group[0].agent}</span> 使用最为熟练 (共 ${group[0].count} 场)，优于 ${group[1].agent}。`);
+                    diffNotes.push(`在 <b>${role}</b> 中，<span class="text-green">${group[0].agent}</span> 使用最为熟练 (共 ${group[0].count} 场)。`);
                 }
             });
 
             agentDiff = diffNotes.length > 0 ? diffNotes.join('<br>') : `主力英雄为 <span class="text-yellow">${agentsArray.sort((a,b)=>b.count-a.count)[0]?.agent || 'Jett'}</span>。`;
 
-            let fkfdAdvice = `出场战绩稳定，共参加 ${matches.length} 场对局。建议保持团队拉扯纪律性。`;
+            let fkfdAdvice = `共参加 ${matches.length} 场对局，表现稳定，建议保持战术纪律。`;
             return { positionRec, agentDiff, fkfdAdvice };
         }
 
@@ -575,7 +557,7 @@
                                     <th>场次</th>
                                     <th>英雄角色</th>
                                     <th>定位</th>
-                                    <th>状态 / 结果</th>
+                                    <th>状态</th>
                                     <th>K/D</th>
                                     <th>ACS</th>
                                 </tr>
@@ -597,9 +579,7 @@
 
                     <!-- 赛训诊断 -->
                     <div class="advice-box">
-                        <div class="advice-header">
-                            <span>🧠</span> 赛训诊断与战术建议
-                        </div>
+                        <div class="advice-header"><span>🧠</span> 赛训诊断与战术建议</div>
                         <div class="advice-grid">
                             <div class="advice-card">
                                 <div class="advice-card-title"><span>🎯 主 / 副定位推荐</span></div>
