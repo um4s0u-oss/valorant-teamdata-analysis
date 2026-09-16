@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Valorant 战队数据专业分析系统 v4.1</title>
+    <title>Valorant 战队数据专业分析系统 v5.0 - 账号档案中心</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         :root { --valo-red: #ff4655; --dark-bg: #0f1923; }
@@ -11,8 +11,10 @@
         .player-card { background-color: #1f2937; border-left: 5px solid var(--valo-red); transition: transform 0.2s; }
         .drop-zone { border: 2px dashed #4b5563; background: #1a232e; cursor: pointer; transition: all 0.3s; }
         .drop-zone:hover, .drop-zone.drag-over { border-color: var(--valo-red); background: #252e3a; }
-        .btn-valo { background-color: var(--valo-red); color: white; padding: 10px 24px; border-radius: 4px; font-weight: bold; cursor: pointer; display: inline-block; }
+        .btn-valo { background-color: var(--valo-red); color: white; padding: 10px 24px; border-radius: 4px; font-weight: bold; cursor: pointer; display: inline-block; transition: background 0.2s; }
         .btn-valo:hover { background-color: #e03e4b; }
+        .btn-secondary { background-color: #374151; color: white; padding: 6px 14px; border-radius: 4px; font-size: 13px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
+        .btn-secondary:hover { background-color: #4b5563; }
         .role-badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: bold; text-transform: uppercase; }
         .role-duelist { background-color: #ef444433; color: #ef4444; border: 1px solid #ef444455; }
         .role-initiator { background-color: #3b82f633; color: #60a5fa; border: 1px solid #3b82f655; }
@@ -24,24 +26,43 @@
 </head>
 <body class="p-4 md:p-10">
     <div class="max-w-6xl mx-auto">
-        <!-- 头部导航 -->
-        <div class="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
+        <!-- 顶部账号与系统导航栏 -->
+        <div class="bg-gray-800/60 border border-gray-700 rounded-xl p-4 mb-8 flex flex-col md:flex-row justify-between items-center gap-4 shadow-lg">
+            <div class="flex items-center gap-3">
+                <div class="h-10 w-10 bg-red-600 rounded-lg flex items-center justify-center font-black italic">PRO</div>
+                <div>
+                    <h1 class="text-xl font-black italic tracking-tighter">VALORANT <span class="text-red-500">PRO ARCHIVES</span></h1>
+                    <p class="text-xs text-gray-400">当前激活账号: <span id="currentAccountDisplay" class="text-yellow-400 font-bold">默认战队分析</span></p>
+                </div>
+            </div>
+            
+            <div class="flex flex-wrap items-center gap-3">
+                <select id="accountSelect" onchange="switchAccount(this.value)" class="bg-gray-900 border border-gray-700 text-white text-sm rounded px-3 py-2 outline-none focus:border-red-500">
+                    <!-- 动态生成账号选项 -->
+                </select>
+                <button onclick="createNewAccount()" class="btn-secondary">+ 新建账号</button>
+                <button onclick="clearCurrentAccountData()" class="bg-red-950/60 border border-red-800/80 text-red-300 hover:bg-red-900 px-3 py-2 rounded text-xs font-bold transition">清空当前档案</button>
+            </div>
+        </div>
+
+        <!-- 头部信息提示 -->
+        <div class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4 px-2">
             <div>
-                <h1 class="text-4xl font-black italic tracking-tighter text-white">PRO <span class="text-red-500">ANALYTICS</span></h1>
-                <p class="text-gray-400 text-sm mt-1">v4.1 智能表头兼容 + 修复首杀数据完整统计</p>
+                <h2 class="text-2xl font-bold text-white">选手长期职业档案中心</h2>
+                <p class="text-gray-400 text-sm mt-1">支持多次导入训练赛，自动为每位选手累积跨场次综合表现与英雄池</p>
             </div>
             <div id="fileInfo" class="text-sm font-mono text-gray-500">等待导入数据...</div>
         </div>
 
         <!-- 上传区 -->
-        <div id="dropZone" class="drop-zone rounded-2xl p-12 text-center shadow-2xl mb-12">
-            <div class="text-6xl mb-6">📊</div>
-            <h2 class="text-2xl font-bold mb-4">将您的训练赛 CSV 文件拖到这里</h2>
-            <p class="text-gray-400 mb-8">或者点击下方的红色按钮选择文件</p>
-            <label for="fileInput" class="btn-valo">选择电脑上的文件</label>
+        <div id="dropZone" class="drop-zone rounded-2xl p-10 text-center shadow-2xl mb-12">
+            <div class="text-5xl mb-4">📁</div>
+            <h3 class="text-xl font-bold mb-2">上传新的训练赛 CSV 统计表格</h3>
+            <p class="text-gray-400 text-sm mb-6">数据将自动累加并更新至当前账号的选手个人职业档案库中</p>
+            <label for="fileInput" class="btn-valo">选择电脑上的 CSV 文件</label>
             <input type="file" id="fileInput" accept=".csv" class="hidden">
-            <div class="mt-6 text-xs text-gray-500">
-                支持兼容表头：姓名/选手/玩家，英雄，K/击杀，D/死亡，A/助攻，ACS/评分，首杀/First Kill/FK
+            <div class="mt-4 text-xs text-gray-500">
+                支持表头兼容：姓名/选手/玩家，英雄，K/击杀，D/死亡，A/助攻，ACS/评分，首杀/First Kill/FK
             </div>
         </div>
 
@@ -49,13 +70,13 @@
         <div id="dashboard" class="space-y-10 hidden"></div>
 
         <!-- 占位提示 -->
-        <div id="placeholder" class="py-20 text-center text-gray-600">
-            <p>暂无数据，请先上传您的赛后统计表格</p>
+        <div id="placeholder" class="py-16 text-center text-gray-600 border border-dashed border-gray-800 rounded-xl">
+            <p class="text-lg">当前账号暂无选手档案，请先上方上传训练赛表格</p>
         </div>
     </div>
 
     <script>
-        // Valorant 英雄定位字典库
+        // 英雄定位字典
         const agentRoles = {
             'Jett': '突击位', 'Reyna': '突击位', 'Raze': '突击位', 'Phoenix': '突击位', 'Yoru': '突击位', 'Neon': '突击位', 'Iso': '突击位', 'Waylay': '突击位',
             'Sova': '先锋位', 'Breach': '先锋位', 'Skye': '先锋位', 'KAY/O': '先锋位', 'Fade': '先锋位', 'Gekko': '先锋位', 'Tejo': '先锋位',
@@ -65,8 +86,7 @@
 
         function getAgentRole(agentName) {
             if (!agentName) return '突击位';
-            const cleanName = agentName.trim();
-            return agentRoles[cleanName] || '突击位';
+            return agentRoles[agentName.trim()] || '突击位';
         }
 
         function getRoleBadgeClass(role) {
@@ -79,6 +99,89 @@
             }
         }
 
+        // --- 本地多账号与档案数据管理逻辑 ---
+        let currentAccount = localStorage.getItem('valo_active_account') || '默认战队分析';
+        
+        function getAccountsList() {
+            try {
+                const list = JSON.parse(localStorage.getItem('valo_accounts_list'));
+                if (Array.isArray(list) && list.length > 0) return list;
+            } catch(e) {}
+            return ['默认战队分析', '主力一队', '青训二队'];
+        }
+
+        function saveAccountsList(list) {
+            localStorage.setItem('valo_accounts_list', JSON.stringify(list));
+        }
+
+        function getAccountStorageKey(accountName) {
+            return `valo_archive_data_${accountName}`;
+        }
+
+        function loadAccountData(accountName) {
+            try {
+                const data = localStorage.getItem(getAccountStorageKey(accountName));
+                return data ? JSON.parse(data) : null;
+            } catch(e) {
+                return null;
+            }
+        }
+
+        function saveAccountData(accountName, playersMap) {
+            localStorage.setItem(getAccountStorageKey(accountName), JSON.stringify(playersMap));
+        }
+
+        // 初始化账号下拉菜单
+        function initAccountUI() {
+            const select = document.getElementById('accountSelect');
+            const accounts = getAccountsList();
+            if (!accounts.includes(currentAccount)) {
+                currentAccount = accounts[0];
+            }
+            localStorage.setItem('valo_active_account', currentAccount);
+            
+            select.innerHTML = accounts.map(acc => `<option value="${acc}" ${acc === currentAccount ? 'selected' : ''}>账号: ${acc}</option>`).join('');
+            document.getElementById('currentAccountDisplay').innerText = currentAccount;
+
+            // 加载当前账号的数据并渲染
+            const data = loadAccountData(currentAccount);
+            if (data && Object.keys(data).length > 0) {
+                render(data);
+            } else {
+                dashboard.innerHTML = '';
+                dashboard.classList.add('hidden');
+                placeholder.classList.remove('hidden');
+                document.getElementById('fileInfo').innerText = "当前账号暂无长期档案";
+            }
+        }
+
+        function switchAccount(accName) {
+            currentAccount = accName;
+            localStorage.setItem('valo_active_account', currentAccount);
+            initAccountUI();
+        }
+
+        function createNewAccount() {
+            const newName = prompt("请输入新账号或复盘项目名称（例如：主教练-Alex / 战术复盘A组）：");
+            if (!newName || !newName.trim()) return;
+            const trimmed = newName.trim();
+            
+            let accounts = getAccountsList();
+            if (!accounts.includes(trimmed)) {
+                accounts.push(trimmed);
+                saveAccountsList(accounts);
+            }
+            switchAccount(trimmed);
+        }
+
+        function clearCurrentAccountData() {
+            if (confirm(`确定要清空账号「${currentAccount}」下的所有选手档案数据吗？此操作不可恢复。`)) {
+                localStorage.removeItem(getAccountStorageKey(currentAccount));
+                initAccountUI();
+            }
+        }
+
+        // --- 拖拽与文件上传监听 ---
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
         const dashboard = document.getElementById('dashboard');
@@ -107,14 +210,13 @@
                 if (content.includes('')) {
                     const readerRetry = new FileReader();
                     readerRetry.readAsText(file, 'UTF-8');
-                    readerRetry.onload = (evt) => parseCSV(evt.target.result);
+                    readerRetry.onload = (evt) => parseAndMergeCSV(evt.target.result);
                 } else {
-                    parseCSV(content);
+                    parseAndMergeCSV(content);
                 }
             };
         }
 
-        // 智能表头匹配函数（支持别名）
         function findColumnIndex(headers, possibleNames) {
             for (let name of possibleNames) {
                 const index = headers.findIndex(h => h.toLowerCase() === name.toLowerCase() || h.includes(name));
@@ -123,13 +225,12 @@
             return -1;
         }
 
-        function parseCSV(text) {
+        // 解析并与当前账号已有的长期档案进行“累加聚合”
+        function parseAndMergeCSV(text) {
             const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
             if (lines.length < 2) { alert("文件内容不足"); return; }
 
             const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-            
-            // 建立多维别名映射，完美兼容各种常见写法
             const idx = {
                 name: findColumnIndex(headers, ['姓名', '选手', '玩家', 'Name', 'Player']),
                 agent: findColumnIndex(headers, ['英雄', '特工', 'Agent', 'Character']),
@@ -140,13 +241,14 @@
                 fk: findColumnIndex(headers, ['首杀', 'First Kill', 'FK', 'FirstKills'])
             };
 
-            // 基础校验：名字、击杀、死亡为必须字段
             if (idx.name === -1 || idx.k === -1 || idx.d === -1) {
-                alert("错误：无法在 CSV 中识别出「姓名/选手/玩家」、「K/击杀」或「D/死亡」列，请检查表头。");
+                alert("错误：无法在 CSV 中识别出「姓名/选手/玩家」、「K/击杀」或「D/死亡」列。");
                 return;
             }
 
-            const playersMap = {};
+            // 读取当前账号已有的长期档案，如果没有则新建空对象
+            let playersMap = loadAccountData(currentAccount) || {};
+
             lines.slice(1).forEach(line => {
                 const row = line.split(',').map(v => v.trim().replace(/"/g, ''));
                 const name = row[idx.name];
@@ -168,9 +270,11 @@
                 const agentName = (idx.agent !== -1 && row[idx.agent]) ? row[idx.agent] : 'Jett';
                 const role = getAgentRole(agentName);
 
-                // 记录单局明细
+                // 全局累计场次序号自增
+                const newMatchId = playersMap[name].matches.length + 1;
+
                 playersMap[name].matches.push({ 
-                    matchId: playersMap[name].matches.length + 1,
+                    matchId: newMatchId,
                     agent: agentName, 
                     role, 
                     k, d, a, acs, fk, 
@@ -178,7 +282,6 @@
                     pm: k - d 
                 });
 
-                // 按英雄聚合统计
                 if (!playersMap[name].agentsMap[agentName]) {
                     playersMap[name].agentsMap[agentName] = { agent: agentName, role, count: 0, k: 0, d: 0, a: 0, acs: 0, fk: 0 };
                 }
@@ -193,10 +296,11 @@
                 playersMap[name].totalFk += fk;
             });
 
+            // 保存到该账号的长期档案中
+            saveAccountData(currentAccount, playersMap);
             render(playersMap);
         }
 
-        // 深度多维赛训评价生成函数
         function generateAdvancedComment(p, avgKd, avgAcs, totalPM) {
             const matchCount = p.matches.length;
             const avgFk = (p.totalFk / matchCount).toFixed(1);
@@ -205,37 +309,37 @@
             const mainAgent = sortedAgents[0] ? sortedAgents[0].agent : '综合英雄';
             const mainRole = sortedAgents[0] ? sortedAgents[0].role : '核心定位';
 
-            let analysis = `【综合复盘】该选手本阶段共计登场 ${matchCount} 场，主要司职主打英雄为 <span class="text-white font-bold">${mainAgent}</span>（定位：${mainRole}）。`;
+            let analysis = `【职业档案综合复盘】该选手在当前账号下累计记录了 ${matchCount} 场训练赛。核心常用英雄为 <span class="text-white font-bold">${mainAgent}</span>（定位：${mainRole}）。`;
 
             if (avgAcs >= 230) {
-                analysis += `其 ACS 维持在极高的火力水准（平均 ${avgAcs}），具备极强的地图资源争夺能力与个人能力输出。`;
+                analysis += `长期 ACS 维持在极高的火力水准（平均 ${avgAcs}），是队伍绝对的核心输出支撑。`;
             } else if (avgAcs >= 180) {
-                analysis += `其 ACS 表现达到联赛标准（平均 ${avgAcs}），战术职责履行到位，能够稳定提供持续火力。`;
+                analysis += `长期 ACS 表现稳定在联赛平均线以上（平均 ${avgAcs}），战术价值执行良好。`;
             } else {
-                analysis += `近期 ACS 偏低（平均 ${avgAcs}），在进攻端的正面突破或防守端的道具铺垫上存在断层。`;
+                analysis += `长期 ACS 偏低（平均 ${avgAcs}），正面交火与地图道具覆盖的伤害转化率仍有提升空间。`;
             }
 
             if (avgKd >= 1.25) {
-                analysis += `对枪压制力极强（综合 K/D 高达 ${avgKd}，净胜分 +${totalPM}），单兵作战能力优异。`;
+                analysis += `跨场次对枪压制力非常卓越（长期综合 K/D 高达 ${avgKd}，净胜分 +${totalPM}）。`;
             } else if (avgKd >= 1.0) {
-                analysis += `对枪效率保持在健康区间（综合 K/D ${avgKd}），失误较少，抗压能力合格。`;
+                analysis += `跨场次对枪效率保持健康（长期综合 K/D ${avgKd}），抗压与容错率较高。`;
             } else {
-                analysis += `近期交火胜率不足（综合 K/D ${avgKd}，净胜分 ${totalPM}），对枪易陷入劣势。`;
+                analysis += `跨场次对枪胜率偏低（长期综合 K/D ${avgKd}，净胜分 ${totalPM}），交火易陷入劣势。`;
             }
 
             if (p.totalFk > 0) {
-                analysis += `首杀贡献稳定（总首杀 ${p.totalFk} 次，场均约 ${avgFk} 次），具备主动开团或前压撕扯防线能力。`;
+                analysis += `总首杀贡献稳定（累计首杀 ${p.totalFk} 次，场均约 ${avgFk} 次），具备开辟团战优势的锐利度。`;
             } else {
-                analysis += `首杀数据相对保守，偏向于稳健架枪或防守反击打法。`;
+                analysis += `首杀数据相对保守，习惯偏向稳健架枪。`;
             }
 
-            analysis += `<br><span class="text-red-400 font-bold">🎯 教练改进建议：</span>`;
+            analysis += `<br><span class="text-red-400 font-bold">🎯 教练长期指导建议：</span>`;
             if (avgKd < 1.0) {
-                analysis += `需重点复盘其对枪身位与残局处理细节，优化交战前的拉枪线时机，减少不必要的初段白给。`;
+                analysis += `建议针对近期多场失利对局进行身位复盘，重点优化对枪前的拉身位时机与补枪协同。`;
             } else if (avgAcs < 190) {
-                analysis += `建议在战术体系中赋予其更多主动交战或配合队友拿信息的机会，提升整体经济局与长枪局的伤害转换率。`;
+                analysis += `可在战术训练中设计更多围绕其擅长英雄的主动战术，激发其在长枪局中的伤害输出上限。`;
             } else {
-                analysis += `当前竞技状态火热，建议在后续地图池扩充中继续深耕当前英雄池，并着重提升残局时的多杀转化率与团队指挥联动。`;
+                analysis += `整体长期竞技状态十分稳健，建议继续巩固当前英雄池，并着重提升多杀与残局处理的上限。`;
             }
 
             return analysis;
@@ -244,7 +348,7 @@
         function render(playersMap) {
             placeholder.classList.add('hidden');
             dashboard.classList.remove('hidden');
-            fileInfo.innerText = "数据解析成功 ✅";
+            fileInfo.innerText = `账号「${currentAccount}」档案加载成功 ✅`;
             
             let html = '';
             const sortedNames = Object.keys(playersMap).sort((a,b) => {
@@ -270,13 +374,13 @@
                             </div>
                             <div>
                                 <h2 class="text-3xl font-black text-white italic tracking-tighter">${name}</h2>
-                                <p class="text-xs text-gray-500 uppercase mt-1">Total Scrims: ${p.matches.length} 场</p>
+                                <p class="text-xs text-gray-400 uppercase mt-1">职业档案总计场次: <span class="text-yellow-400 font-bold">${p.matches.length} 场</span></p>
                             </div>
                         </div>
                         
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
                             <div>
-                                <p class="text-[10px] text-gray-500 uppercase font-bold mb-1">Overall K/D</p>
+                                <p class="text-[10px] text-gray-500 uppercase font-bold mb-1">Career K/D</p>
                                 <p class="text-2xl font-black ${avgKd >= 1.2 ? 'text-green-400' : (avgKd < 0.9 ? 'text-red-500' : 'text-white')}">${avgKd}</p>
                             </div>
                             <div>
@@ -296,14 +400,14 @@
 
                     <!-- 切换按钮栏 -->
                     <div class="px-6 py-3 bg-gray-800/80 border-b border-gray-700 flex justify-between items-center">
-                        <span class="text-xs font-bold text-gray-400 uppercase tracking-widest">📋 战绩表现视图切换</span>
+                        <span class="text-xs font-bold text-gray-400 uppercase tracking-widest">📋 职业档案视图切换</span>
                         <div class="flex gap-2">
-                            <button class="toggle-btn active" onclick="switchView('${index}', 'aggregated', this)">英雄整体表现汇总</button>
-                            <button class="toggle-btn" onclick="switchView('${index}', 'matches', this)">全部单局战绩明细 (${p.matches.length}场)</button>
+                            <button class="toggle-btn active" onclick="switchView('${index}', 'aggregated', this)">长期英雄池与表现汇总</button>
+                            <button class="toggle-btn" onclick="switchView('${index}', 'matches', this)">全部历史单局明细 (${p.matches.length}场)</button>
                         </div>
                     </div>
 
-                    <!-- 视图 A：英雄整体表现聚合表 -->
+                    <!-- 视图 A：长期英雄聚合表现表 -->
                     <div id="view-aggregated-${index}" class="p-6 bg-gray-800/40 border-b border-gray-800">
                         <div class="overflow-x-auto">
                             <table class="w-full text-sm text-left">
@@ -311,7 +415,7 @@
                                     <tr>
                                         <th class="pb-3">英雄 Agent</th>
                                         <th class="pb-3">定位 Role</th>
-                                        <th class="pb-3">登场次数</th>
+                                        <th class="pb-3">累计登场</th>
                                         <th class="pb-3">总 K / D / A</th>
                                         <th class="pb-3">平均 K/D</th>
                                         <th class="pb-3">平均 ACS</th>
@@ -340,13 +444,13 @@
                         </div>
                     </div>
 
-                    <!-- 视图 B：全部单局战绩明细表 -->
+                    <!-- 视图 B：历史全部单局明细表 -->
                     <div id="view-matches-${index}" class="p-6 bg-gray-800/40 border-b border-gray-800 hidden">
                         <div class="overflow-x-auto">
                             <table class="w-full text-sm text-left">
                                 <thead class="text-gray-500 uppercase text-[10px] tracking-widest border-b border-gray-700">
                                     <tr>
-                                        <th class="pb-3">场次 Match</th>
+                                        <th class="pb-3">历史场次序号</th>
                                         <th class="pb-3">英雄 Agent</th>
                                         <th class="pb-3">定位 Role</th>
                                         <th class="pb-3">K / D / A</th>
@@ -377,11 +481,11 @@
                         </div>
                     </div>
 
-                    <!-- 底部：专业赛训分析评语 -->
+                    <!-- 底部：长期赛训教练职业复盘报告 -->
                     <div class="p-6 bg-gray-900/90 border-t border-gray-800 text-sm text-gray-300 leading-relaxed flex items-start gap-3">
                         <span class="text-2xl">💡</span>
                         <div>
-                            <span class="font-bold text-red-400 block mb-1">专业赛训教练复盘报告：</span>
+                            <span class="font-bold text-red-400 block mb-1">专业赛训教练职业档案报告：</span>
                             <div class="space-y-1">${aiComment}</div>
                         </div>
                     </div>
@@ -407,6 +511,11 @@
                 matchView.classList.remove('hidden');
             }
         }
+
+        // 页面首次加载时初始化账号下拉与长期档案
+        window.addEventListener('DOMContentLoaded', () => {
+            initAccountUI();
+        });
     </script>
 </body>
 </html>
