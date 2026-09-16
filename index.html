@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Valorant 战队数据专业分析系统 v16.0</title>
+    <title>Valorant 战队数据专业分析系统 v17.0</title>
     <!-- 引入官方 SheetJS 库 -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
@@ -95,16 +95,16 @@
             <div id="fileInfo" style="font-size: 13px; font-weight: bold; color: #facc15; background: #111827; padding: 6px 12px; border-radius: 6px; border: 1px solid #374151;">等待导入数据...</div>
         </div>
 
-        <!-- 拖拽上传 -->
+        <!-- 拖拽上传区域 -->
         <div id="dropZone" class="drop-zone" onclick="document.getElementById('fileInput').click()">
             <div style="font-size: 36px; margin-bottom: 8px;">📊</div>
             <h3 style="font-size: 17px; margin-bottom: 4px;">点击或拖入 Excel (.xlsx/.xls) 文件</h3>
-            <p style="color: #9ca3af; font-size: 13px; margin-bottom: 12px;">自动读取战绩 Sheet 并在本地永久保存下拉切换功能</p>
+            <p style="color: #9ca3af; font-size: 13px; margin-bottom: 12px;">智能识别并持久化存储战绩下拉工作表</p>
             <button class="btn-valo">选择表格文件</button>
             <input type="file" id="fileInput" accept=".xlsx, .xls, .csv" style="display: none;" onchange="handleFileSelect(event)">
         </div>
 
-        <!-- 多 Sheet 自由切换栏 -->
+        <!-- Sheet 选择栏 -->
         <div id="sheetBar" class="sheet-selector-bar" style="display: none;">
             <div class="sheet-selector-title">
                 <span>🎯</span>
@@ -150,7 +150,7 @@
 
         const DEFAULT_ACC = ["默认战队分析", "一队档案", "二队档案", "试训档案"];
         let currentAccount = localStorage.getItem('valo_active_acc') || DEFAULT_ACC[0];
-        let loadedSheetsStore = {}; // 内存缓存：{ sheetName: rawRows }
+        let processedSheetsStore = {}; // 存储轻量化解析后的各 Sheet 战绩数据对象
 
         function getAccounts() {
             try {
@@ -171,34 +171,28 @@
 
             setupDragAndDrop();
 
-            // 从 localStorage 恢复 Sheets 缓存
-            const cachedSheetsData = localStorage.getItem('valo_sheets_' + currentAccount);
+            // 恢复轻量级多 Sheet 数据缓存
+            const cachedSheetsData = localStorage.getItem('valo_processed_sheets_' + currentAccount);
             const activeSheetName = localStorage.getItem('valo_active_sheet_' + currentAccount);
 
             if (cachedSheetsData) {
                 try {
-                    loadedSheetsStore = JSON.parse(cachedSheetsData);
-                    const sheetNames = Object.keys(loadedSheetsStore);
+                    processedSheetsStore = JSON.parse(cachedSheetsData);
+                    const sheetNames = Object.keys(processedSheetsStore);
                     if (sheetNames.length > 0) {
-                        renderSheetBar(sheetNames, activeSheetName || sheetNames[0]);
-                        const currentSheet = activeSheetName && loadedSheetsStore[activeSheetName] ? activeSheetName : sheetNames[0];
-                        parseStructuredRows(loadedSheetsStore[currentSheet], currentSheet);
-                        document.getElementById('fileInfo').innerText = `存档 [${currentSheet}] 已载入 ✅`;
+                        const currentSheet = activeSheetName && processedSheetsStore[activeSheetName] ? activeSheetName : sheetNames[0];
+                        renderSheetBar(sheetNames, currentSheet);
+                        render(processedSheetsStore[currentSheet]);
+                        document.getElementById('fileInfo').innerText = `已载入工作表: [${currentSheet}] ✅`;
                         return;
                     }
                 } catch(e) { console.error("读取 Sheet 缓存失败", e); }
             }
 
-            // 退回逻辑：尝试加载静态选手汇总数据
-            const data = loadData(currentAccount);
-            if (data && Object.keys(data).length > 0) {
-                render(data);
-                document.getElementById('fileInfo').innerText = "已加载历史静态战绩 ✅";
-            } else {
-                document.getElementById('dashboard').innerHTML = '';
-                document.getElementById('placeholder').style.display = 'block';
-                document.getElementById('fileInfo').innerText = "当前账号无数据";
-            }
+            document.getElementById('dashboard').innerHTML = '';
+            document.getElementById('placeholder').style.display = 'block';
+            document.getElementById('sheetBar').style.display = 'none';
+            document.getElementById('fileInfo').innerText = "当前账号无数据";
         }
 
         function setupDragAndDrop() {
@@ -210,7 +204,7 @@
                 dz.addEventListener(eventName, () => dz.classList.add('dragover'), false);
             });
             ['dragleave', 'drop'].forEach(eventName => {
-                dz.addEventListener(eventName, () => dz.classList.remove('dragover'), false);
+                dz.addEventListener(eventName, () => dz.classList.remove('dragleave'), false);
             });
             dz.addEventListener('drop', (e) => {
                 const dt = e.dataTransfer;
@@ -231,19 +225,13 @@
         }
 
         function clearCurrentAccountData() {
-            if (confirm(`确认清空「${currentAccount}」下的所有档案与 Sheet 缓存数据？`)) {
-                localStorage.removeItem('valo_data_' + currentAccount);
-                localStorage.removeItem('valo_sheets_' + currentAccount);
+            if (confirm(`确认清空「${currentAccount}」下的所有战绩与工作表下拉缓存？`)) {
+                localStorage.removeItem('valo_processed_sheets_' + currentAccount);
                 localStorage.removeItem('valo_active_sheet_' + currentAccount);
-                loadedSheetsStore = {};
+                processedSheetsStore = {};
                 document.getElementById('sheetBar').style.display = 'none';
                 initUI();
             }
-        }
-
-        function saveData(acc, data) { localStorage.setItem('valo_data_' + acc, JSON.stringify(data)); }
-        function loadData(acc) {
-            try { return JSON.parse(localStorage.getItem('valo_data_' + acc)); } catch(e){ return null; }
         }
 
         function handleFileSelect(evt) {
@@ -251,7 +239,6 @@
             if (file) processFile(file);
         }
 
-        // 强力检测某一二维数组是否为包含战绩表数据的 Sheet
         function isMatchRows(rows) {
             if (!rows || rows.length < 2) return false;
             for (let i = 0; i < Math.min(10, rows.length); i++) {
@@ -265,7 +252,7 @@
         }
 
         function processFile(file) {
-            document.getElementById('fileInfo').innerText = "深度读取中: " + file.name;
+            document.getElementById('fileInfo').innerText = "正在解析: " + file.name;
             const fileName = file.name.toLowerCase();
 
             if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
@@ -273,10 +260,9 @@
                 reader.onload = function(e) {
                     try {
                         const data = new Uint8Array(e.target.result);
-                        // header: 1 强制将 Excel 转化为二维数组，彻底规避第一列第一行为空导致的数据缺失
                         const workbook = XLSX.read(data, { type: 'array' });
                         
-                        loadedSheetsStore = {};
+                        processedSheetsStore = {};
                         const matchSheets = [];
 
                         workbook.SheetNames.forEach(name => {
@@ -284,21 +270,32 @@
                             const sheet = workbook.Sheets[name];
                             const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
                             if (isMatchRows(rows)) {
-                                matchSheets.push(name);
-                                loadedSheetsStore[name] = rows;
+                                const parsedPlayersMap = extractPlayersMapFromRows(rows);
+                                if (parsedPlayersMap && Object.keys(parsedPlayersMap).length > 0) {
+                                    matchSheets.push(name);
+                                    processedSheetsStore[name] = parsedPlayersMap;
+                                }
                             }
                         });
 
                         if (matchSheets.length > 0) {
-                            // 将战绩 Sheets 保存到 localStorage
-                            localStorage.setItem('valo_sheets_' + currentAccount, JSON.stringify(loadedSheetsStore));
-                            renderSheetBar(matchSheets, matchSheets[0]);
-                            onSheetDropdownChange(matchSheets[0]);
+                            // 将轻量级数据保存至 localStorage
+                            try {
+                                localStorage.setItem('valo_processed_sheets_' + currentAccount, JSON.stringify(processedSheetsStore));
+                            } catch (e) {
+                                console.warn("存储空间超出 limit", e);
+                            }
+                            
+                            const defaultSheet = matchSheets[0];
+                            localStorage.setItem('valo_active_sheet_' + currentAccount, defaultSheet);
+                            renderSheetBar(matchSheets, defaultSheet);
+                            render(processedSheetsStore[defaultSheet]);
+                            document.getElementById('fileInfo').innerText = "已成功加载并持久化战绩表 ✅";
                         } else {
-                            alert("未在 Excel 中扫描到有效的【击杀】、【选手】对局战绩工作表。");
+                            alert("未在文件内扫描到包含【击杀】与【选手】的战绩表格。");
                         }
                     } catch(err) {
-                        alert("解析 Excel 文件遇到错误，请检查格式");
+                        alert("解析表格文件出错，请确认格式");
                         console.error(err);
                     }
                 };
@@ -310,7 +307,8 @@
                     const text = e.target.result;
                     const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
                     const rows = lines.map(l => l.split(',').map(c => c.trim().replace(/"/g, '')));
-                    parseStructuredRows(rows, file.name);
+                    const parsedMap = extractPlayersMapFromRows(rows);
+                    if (parsedMap) render(parsedMap);
                 };
                 reader.readAsText(file, 'GBK');
             }
@@ -323,19 +321,15 @@
         }
 
         function onSheetDropdownChange(sheetName) {
-            if (loadedSheetsStore && loadedSheetsStore[sheetName]) {
+            if (processedSheetsStore && processedSheetsStore[sheetName]) {
                 localStorage.setItem('valo_active_sheet_' + currentAccount, sheetName);
-                parseStructuredRows(loadedSheetsStore[sheetName], sheetName);
+                render(processedSheetsStore[sheetName]);
+                document.getElementById('fileInfo').innerText = "当前显示: " + sheetName + " ✅";
             }
         }
 
-        // 核心解析函数：自动扫描第一列及后续行，准确定位表头
-        function parseStructuredRows(rows, sheetTitle) {
-            if (!rows || rows.length < 2) { 
-                alert("选中的工作表中无有效表格数据"); 
-                return; 
-            }
-
+        // 从原始二维数组提取并聚合选手战绩
+        function extractPlayersMapFromRows(rows) {
             let headerIdx = -1;
             for (let i = 0; i < Math.min(10, rows.length); i++) {
                 if (!rows[i]) continue;
@@ -346,10 +340,7 @@
                 }
             }
 
-            if (headerIdx === -1) {
-                alert(`表头扫描失败，请确保包含【选手】和【击杀】列。`);
-                return;
-            }
+            if (headerIdx === -1) return null;
 
             const headers = rows[headerIdx].map(h => String(h || '').trim());
             const findExactCol = (candidates) => {
@@ -367,10 +358,7 @@
             const acsCol = findExactCol(['acs', '战斗均分', '评分', '得分']);
             const fkCol = findExactCol(['首杀', 'fk', 'firstkill']);
 
-            if (nameCol === -1 || kCol === -1 || dCol === -1) {
-                alert(`表头定位异常！检测到列: [${headers.join(', ')}]，缺少【选手】或【击杀】或【死亡】。`);
-                return;
-            }
+            if (nameCol === -1 || kCol === -1 || dCol === -1) return null;
 
             let playersMap = {};
 
@@ -416,9 +404,7 @@
                 playersMap[name].totalFk += fk;
             }
 
-            saveData(currentAccount, playersMap);
-            render(playersMap);
-            document.getElementById('fileInfo').innerText = "当前解析: " + sheetTitle + " ✅";
+            return playersMap;
         }
 
         function generatePlayerAdvice(kd, avgAcs, avgFk) {
@@ -426,7 +412,7 @@
             let advice = "";
 
             if (kd >= 1.25 && avgAcs >= 230) {
-                evaluation = "战队绝对核心输出点，对枪撕扯能力强，正面对枪杀伤力极高。";
+                evaluation = "战队绝对核心输出点，正面撕扯能力强，正面对枪杀伤力极高。";
                 advice = "建议团队优先配置掩护拉扯资源，保持高效的破点优势。";
             } else if (kd >= 1.0) {
                 evaluation = "中规中矩的战队基石，输出对枪稳定，具备合格的兑换承伤能力。";
@@ -444,6 +430,12 @@
         }
 
         function render(playersMap) {
+            if (!playersMap || Object.keys(playersMap).length === 0) {
+                document.getElementById('placeholder').style.display = 'block';
+                document.getElementById('dashboard').innerHTML = '';
+                return;
+            }
+
             document.getElementById('placeholder').style.display = 'none';
             const db = document.getElementById('dashboard');
             let html = '';
