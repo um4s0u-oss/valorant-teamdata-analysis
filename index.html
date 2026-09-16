@@ -3,72 +3,104 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Valorant 战队数据专业分析系统 v3.0</title>
+    <title>Valorant 战队数据专业分析系统 v7.0</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
         :root { --valo-red: #ff4655; --dark-bg: #0f1923; }
-        body { background-color: var(--dark-bg); color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        .player-card { background-color: #1f2937; border-left: 5px solid var(--valo-red); transition: transform 0.2s; }
+        body { background-color: var(--dark-bg); color: white; font-family: system-ui, -apple-system, sans-serif; }
+        .player-card { background-color: #1f2937; border-left: 5px solid var(--valo-red); }
         .drop-zone { border: 2px dashed #4b5563; background: #1a232e; cursor: pointer; transition: all 0.3s; }
         .drop-zone:hover, .drop-zone.drag-over { border-color: var(--valo-red); background: #252e3a; }
         .btn-valo { background-color: var(--valo-red); color: white; padding: 10px 24px; border-radius: 4px; font-weight: bold; cursor: pointer; display: inline-block; }
         .btn-valo:hover { background-color: #e03e4b; }
+        .btn-secondary { background-color: #374151; color: white; padding: 6px 14px; border-radius: 4px; font-size: 13px; font-weight: bold; cursor: pointer; }
+        .btn-secondary:hover { background-color: #4b5563; }
         .role-badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: bold; text-transform: uppercase; }
         .role-duelist { background-color: #ef444433; color: #ef4444; border: 1px solid #ef444455; }
         .role-initiator { background-color: #3b82f633; color: #60a5fa; border: 1px solid #3b82f655; }
         .role-controller { background-color: #10b98133; color: #34d399; border: 1px solid #10b98155; }
         .role-sentinel { background-color: #8b5cf633; color: #a78bfa; border: 1px solid #8b5cf655; }
+        .toggle-btn { background: #374151; color: #d1d5db; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer; }
+        .toggle-btn.active { background: var(--valo-red); color: white; }
     </style>
 </head>
 <body class="p-4 md:p-10">
     <div class="max-w-6xl mx-auto">
-        <!-- 头部导航 -->
-        <div class="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
-            <div>
-                <h1 class="text-4xl font-black italic tracking-tighter text-white">PRO <span class="text-red-500">ANALYTICS</span></h1>
-                <p class="text-gray-400 text-sm mt-1">英雄分类归纳 + 智能赛训简评</p>
+        <!-- 顶部账号管理栏 -->
+        <div class="bg-gray-800/60 border border-gray-700 rounded-xl p-4 mb-8 flex flex-col md:flex-row justify-between items-center gap-4 shadow-lg">
+            <div class="flex items-center gap-3">
+                <div class="h-10 w-10 bg-red-600 rounded-lg flex items-center justify-center font-black italic">PRO</div>
+                <div>
+                    <h1 class="text-xl font-black italic tracking-tighter">VALORANT <span class="text-red-500">PRO ARCHIVES</span></h1>
+                    <p class="text-xs text-gray-400">当前激活账号: <span id="currentAccountDisplay" class="text-yellow-400 font-bold">默认战队分析</span></p>
+                </div>
             </div>
-            <div id="fileInfo" class="text-sm font-mono text-gray-500">等待导入数据...</div>
+            
+            <div class="flex flex-wrap items-center gap-3">
+                <select id="accountSelect" onchange="switchAccount(this.value)" class="bg-gray-900 border border-gray-700 text-white text-sm rounded px-3 py-2 outline-none focus:border-red-500">
+                </select>
+                <button onclick="createNewAccount()" class="btn-secondary">+ 新建账号</button>
+                <button onclick="clearCurrentAccountData()" class="bg-red-950/60 border border-red-800/80 text-red-300 hover:bg-red-900 px-3 py-2 rounded text-xs font-bold transition">清空当前档案</button>
+            </div>
+        </div>
+
+        <!-- 头部提示 -->
+        <div class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4 px-2">
+            <div>
+                <h2 class="text-2xl font-bold text-white">选手职业档案与数据中心</h2>
+                <p class="text-gray-400 text-sm mt-1">自动识别 ID / 选手 / 击杀 / 死亡 / 首杀 等表头并自动计算 K-D 差值</p>
+            </div>
+            <div id="fileInfo" class="text-sm font-mono text-yellow-400 font-bold bg-gray-900 px-3 py-1.5 rounded border border-gray-800">等待导入数据...</div>
         </div>
 
         <!-- 上传区 -->
-        <div id="dropZone" class="drop-zone rounded-2xl p-12 text-center shadow-2xl mb-12">
-            <div class="text-6xl mb-6">📊</div>
-            <h2 class="text-2xl font-bold mb-4">将您的训练赛 CSV 文件拖到这里</h2>
-            <p class="text-gray-400 mb-8">或者点击下方的红色按钮选择文件</p>
-            <label for="fileInput" class="btn-valo">选择电脑上的文件</label>
-            <input type="file" id="fileInput" accept=".csv" class="hidden">
-            <div class="mt-6 text-xs text-gray-500">
-                支持字段：姓名, 英雄, K, D, A, ACS, 首杀
-            </div>
+        <div id="dropZone" onclick="document.getElementById('fileInput').click()" class="drop-zone rounded-2xl p-10 text-center shadow-2xl mb-12">
+            <div class="text-5xl mb-4">📊</div>
+            <h3 class="text-xl font-bold mb-2">点击或拖入训练赛数据文件</h3>
+            <p class="text-gray-400 text-sm mb-6">支持 Excel 表格 (.xlsx, .xls) 或 CSV 文件</p>
+            <span class="btn-valo">选择电脑上的文件</span>
+            <input type="file" id="fileInput" accept=".csv, .xlsx, .xls" class="hidden" onchange="handleFileSelect(event)">
         </div>
 
         <!-- 数据展示区 -->
         <div id="dashboard" class="space-y-10 hidden"></div>
 
         <!-- 占位提示 -->
-        <div id="placeholder" class="py-20 text-center text-gray-600">
-            <p>暂无数据，请先上传您的赛后统计表格</p>
+        <div id="placeholder" class="py-16 text-center text-gray-600 border border-dashed border-gray-800 rounded-xl">
+            <p class="text-lg">当前账号暂无选手档案，请上方上传训练赛表格</p>
         </div>
     </div>
 
     <script>
-        // Valorant 英雄定位字典库
+        // 1. 字典映射
+        const agentNameMap = {
+            'JETT': 'Jett', 'RAZE': 'Raze', 'REYNA': 'Reyna', 'SOVA': 'Sova',
+            'BREACH': 'Breach', 'OMEN': 'Omen', 'VIPER': 'Viper', 'CYPHER': 'Cypher',
+            'PHOENIX': 'Phoenix', 'SAGE': 'Sage', 'KILLJOY': 'Killjoy', 'KJ': 'Killjoy',
+            'SKYE': 'Skye', 'YORU': 'Yoru', 'ASTRA': 'Astra', 'KAY/O': 'KAY/O',
+            'KAYO': 'KAY/O', 'CHAMBER': 'Chamber', 'NEON': 'Neon', 'FADE': 'Fade',
+            'HARBOR': 'Harbor', 'GEKKO': 'Gekko', 'DEADLOCK': 'Deadlock', 'ISO': 'Iso',
+            'CLOVE': 'Clove', 'VYSE': 'Vyse',
+            '捷风': 'Jett', '雷兹': 'Raze', '芮娜': 'Reyna', '猎枭': 'Sova',
+            '铁臂': 'Breach', '幽影': 'Omen', '毒蛇': 'Viper', '零': 'Cypher',
+            '不死鸟': 'Phoenix', '贤者': 'Sage', '奇乐': 'Killjoy', '斯凯': 'Skye',
+            '夜露': 'Yoru', '星瞾': 'Astra', '尚勃勒': 'Chamber', '霓虹': 'Neon',
+            '黑梦': 'Fade', '海神': 'Harbor', '盖可': 'Gekko', '死锁': 'Deadlock',
+            '壹决': 'Iso', '暮蝶': 'Clove', '维斯': 'Vyse'
+        };
+
         const agentRoles = {
-            // 突击位 (Duelist)
-            'Jett': '突击位', 'Reyna': '突击位', 'Raze': '突击位', 'Phoenix': '突击位', 'Yoru': '突击位', 'Neon': '突击位', 'Iso': '突击位', 'Veto': '突击位',
-            // 先锋位 (Initiator)
-            'Sova': '先锋位', 'Breach': '先锋位', 'Skye': '先锋位', 'KAY/O': '先锋位', 'Fade': '先锋位', 'Gekko': '先锋位', 'Tejo': '先锋位',
-            // 控场/烟位 (Controller)
+            'Jett': '突击位', 'Reyna': '突击位', 'Raze': '突击位', 'Phoenix': '突击位', 'Yoru': '突击位', 'Neon': '突击位', 'Iso': '突击位',
+            'Sova': '先锋位', 'Breach': '先锋位', 'Skye': '先锋位', 'KAY/O': '先锋位', 'Fade': '先锋位', 'Gekko': '先锋位',
             'Brimstone': '烟位', 'Omen': '烟位', 'Viper': '烟位', 'Astra': '烟位', 'Harbor': '烟位', 'Clove': '烟位',
-            // 哨位 (Sentinel)
             'Cypher': '哨位', 'Killjoy': '哨位', 'Sage': '哨位', 'Chamber': '哨位', 'Deadlock': '哨位', 'Vyse': '哨位'
         };
 
-        function getAgentRole(agentName) {
-            if (!agentName) return '未知位';
-            const cleanName = agentName.trim();
-            return agentRoles[cleanName] || '通用位';
+        function normalizeAgentName(raw) {
+            if (!raw) return 'Jett';
+            const clean = raw.toString().trim().toUpperCase().replace(/\s+/g, '');
+            return agentNameMap[clean] || (raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase());
         }
 
         function getRoleBadgeClass(role) {
@@ -77,231 +109,356 @@
                 case '先锋位': return 'role-initiator';
                 case '烟位': return 'role-controller';
                 case '哨位': return 'role-sentinel';
-                default: return 'bg-gray-700 text-gray-300';
+                default: return 'role-duelist';
             }
         }
 
-        const dropZone = document.getElementById('dropZone');
-        const fileInput = document.getElementById('fileInput');
-        const dashboard = document.getElementById('dashboard');
-        const placeholder = document.getElementById('placeholder');
-        const fileInfo = document.getElementById('fileInfo');
+        // 2. 账号管理逻辑（全面增强容错）
+        const DEFAULT_ACCOUNTS = ['默认战队分析', '主力一队', '青训二队'];
+        let currentAccount = localStorage.getItem('valo_active_account') || DEFAULT_ACCOUNTS[0];
 
-        // 拖拽与点击事件绑定
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            window.addEventListener(eventName, e => { e.preventDefault(); e.stopPropagation(); }, false);
-        });
-        ['dragenter', 'dragover'].forEach(eventName => dropZone.addEventListener(eventName, () => dropZone.classList.add('drag-over'), false));
-        ['dragleave', 'drop'].forEach(eventName => dropZone.addEventListener(eventName, () => dropZone.classList.remove('drag-over'), false));
-        
-        dropZone.addEventListener('drop', (e) => handleFile(e.dataTransfer.files[0]), false);
-        fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
+        function getAccountsList() {
+            try {
+                const stored = JSON.parse(localStorage.getItem('valo_accounts_list'));
+                if (Array.isArray(stored) && stored.length > 0) return stored;
+            } catch(e) {}
+            localStorage.setItem('valo_accounts_list', JSON.stringify(DEFAULT_ACCOUNTS));
+            return DEFAULT_ACCOUNTS;
+        }
 
-        function handleFile(file) {
-            if (!file || !file.name.toLowerCase().endsWith('.csv')) {
-                alert('请上传 .csv 格式的文件！');
-                return;
+        function initAccountUI() {
+            const accounts = getAccountsList();
+            if (!accounts.includes(currentAccount)) currentAccount = accounts[0];
+            localStorage.setItem('valo_active_account', currentAccount);
+
+            const select = document.getElementById('accountSelect');
+            select.innerHTML = accounts.map(acc => `<option value="${acc}" ${acc === currentAccount ? 'selected' : ''}>${acc}</option>`).join('');
+            document.getElementById('currentAccountDisplay').innerText = currentAccount;
+
+            const data = loadAccountData(currentAccount);
+            if (data && Object.keys(data).length > 0) {
+                render(data);
+                document.getElementById('fileInfo').innerText = `已加载账号档案数据 ✅`;
+            } else {
+                document.getElementById('dashboard').innerHTML = '';
+                document.getElementById('dashboard').classList.add('hidden');
+                document.getElementById('placeholder').classList.remove('hidden');
+                document.getElementById('fileInfo').innerText = "当前账号暂无数据";
             }
+        }
+
+        function switchAccount(accName) {
+            currentAccount = accName;
+            localStorage.setItem('valo_active_account', currentAccount);
+            initAccountUI();
+        }
+
+        function createNewAccount() {
+            const name = prompt("请输入新账号/战队名称：");
+            if (!name || !name.trim()) return;
+            const cleanName = name.trim();
+            let accounts = getAccountsList();
+            if (!accounts.includes(cleanName)) {
+                accounts.push(cleanName);
+                localStorage.setItem('valo_accounts_list', JSON.stringify(accounts));
+            }
+            switchAccount(cleanName);
+        }
+
+        function clearCurrentAccountData() {
+            if (confirm(`确定清空「${currentAccount}」的数据吗？`)) {
+                localStorage.removeItem(`valo_archive_data_${currentAccount}`);
+                initAccountUI();
+            }
+        }
+
+        function loadAccountData(acc) {
+            try {
+                const data = localStorage.getItem(`valo_archive_data_${acc}`);
+                return data ? JSON.parse(data) : null;
+            } catch(e) { return null; }
+        }
+
+        function saveAccountData(acc, data) {
+            localStorage.setItem(`valo_archive_data_${acc}`, JSON.stringify(data));
+        }
+
+        // 3. 文件处理逻辑
+        function handleFileSelect(evt) {
+            const file = evt.target.files[0];
+            if (file) processFile(file);
+        }
+
+        function processFile(file) {
+            const fileInfo = document.getElementById('fileInfo');
             fileInfo.innerText = `正在读取: ${file.name}...`;
+
             const reader = new FileReader();
-            reader.readAsText(file, 'GBK');
-            reader.onload = function(e) {
-                let content = e.target.result;
-                if (content.includes('')) {
-                    const readerRetry = new FileReader();
-                    readerRetry.readAsText(file, 'UTF-8');
-                    readerRetry.onload = (evt) => parseCSV(evt.target.result);
-                } else {
-                    parseCSV(content);
-                }
-            };
+            const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+
+            if (isExcel) {
+                reader.onload = function(e) {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        let sheetData = [];
+                        for (let sheetName of workbook.SheetNames) {
+                            const json = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1 });
+                            if (json && json.length > 1) {
+                                sheetData = json;
+                                break;
+                            }
+                        }
+                        parseMatrixData(sheetData, file.name);
+                    } catch(err) {
+                        alert("Excel 文件读取失败，请确认文件正常。");
+                        fileInfo.innerText = "读取失败 ❌";
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            } else {
+                reader.onload = function(e) {
+                    const text = e.target.result;
+                    const rows = text.split(/\r?\n/).map(r => r.split(','));
+                    parseMatrixData(rows, file.name);
+                };
+                reader.readAsText(file, 'GBK');
+            }
         }
 
-        function parseCSV(text) {
-            const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
-            if (lines.length < 2) { alert("文件内容不足"); return; }
+        // 智能找列
+        function findIndex(headers, targets) {
+            for (let i = 0; i < headers.length; i++) {
+                if (!headers[i]) continue;
+                const h = headers[i].toString().trim().toLowerCase().replace(/[\s_-\t]/g, '');
+                for (let t of targets) {
+                    if (h === t.toLowerCase().replace(/[\s_-\t]/g, '')) return i;
+                }
+            }
+            return -1;
+        }
 
-            const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-            const idx = {
-                name: headers.indexOf('姓名'),
-                agent: headers.indexOf('英雄'),
-                k: headers.indexOf('K'),
-                d: headers.indexOf('D'),
-                a: headers.indexOf('A'),
-                acs: headers.indexOf('ACS'),
-                fk: headers.indexOf('首杀')
-            };
-
-            if (idx.name === -1 || idx.k === -1 || idx.d === -1) {
-                alert("错误：CSV 文件必须包含「姓名」、「K」、「D」三列。");
+        function parseMatrixData(rows, fileName) {
+            const fileInfo = document.getElementById('fileInfo');
+            if (!rows || rows.length < 2) {
+                alert("未检测到有效数据行");
+                fileInfo.innerText = "解析失败 ❌";
                 return;
             }
 
-            const playersMap = {};
-            lines.slice(1).forEach(line => {
-                const row = line.split(',').map(v => v.trim().replace(/"/g, ''));
-                const name = row[idx.name];
-                if (!name) return;
+            // 寻找表头所在行
+            let headerIdx = -1;
+            for (let i = 0; i < Math.min(10, rows.length); i++) {
+                const rowStr = rows[i].join(' ').toLowerCase();
+                if (rowStr.includes('击杀') || rowStr.includes('kill') || rowStr.includes('选手') || rowStr.includes('id') || rowStr.includes('姓名')) {
+                    headerIdx = i;
+                    break;
+                }
+            }
+
+            if (headerIdx === -1) headerIdx = 0;
+            const headers = rows[headerIdx].map(c => c ? c.toString().trim() : '');
+
+            const nameCol = findIndex(headers, ['姓名', '选手', '玩家', 'id', 'player', 'name']);
+            const agentCol = findIndex(headers, ['英雄', '角色', '特工', 'agent', 'character']);
+            const kCol = findIndex(headers, ['k', 'kill', 'kills', '击杀']);
+            const dCol = findIndex(headers, ['d', 'dead', 'death', 'deaths', '死亡', '阵亡']);
+            const aCol = findIndex(headers, ['a', 'assist', 'assists', '助攻']);
+            const acsCol = findIndex(headers, ['acs', '评分', '得分']);
+            const fkCol = findIndex(headers, ['首杀', '总首杀', 'fk', 'firstkill', 'first kill']);
+
+            if (nameCol === -1 || kCol === -1 || dCol === -1) {
+                alert(`无法识别关键列！\n读取到的表头: [${headers.join(', ')}]\n请确保包含 选手/ID、击杀/K、死亡/D 列。`);
+                fileInfo.innerText = "匹配错误 ❌";
+                return;
+            }
+
+            let playersMap = loadAccountData(currentAccount) || {};
+
+            for (let i = headerIdx + 1; i < rows.length; i++) {
+                const row = rows[i];
+                if (!row || !row[nameCol]) continue;
+                const name = row[nameCol].toString().trim();
+                if (!name || name === 'undefined') continue;
 
                 if (!playersMap[name]) {
-                    playersMap[name] = { 
-                        matches: [], 
-                        agentsMap: {}, // 用于按英雄聚合
-                        totalK: 0, totalD: 0, totalA: 0, totalAcs: 0, totalFk: 0 
-                    };
+                    playersMap[name] = { matches: [], agentsMap: {}, totalK: 0, totalD: 0, totalA: 0, totalAcs: 0, totalFk: 0 };
                 }
 
-                const k = parseInt(row[idx.k]) || 0;
-                const d = parseInt(row[idx.d]) || 1;
-                const a = (idx.a !== -1) ? parseInt(row[idx.a]) || 0 : 0;
-                const acs = (idx.acs !== -1) ? parseInt(row[idx.acs]) || 0 : 0;
-                const fk = (idx.fk !== -1) ? parseInt(row[idx.fk]) || 0 : 0;
-                const agentName = (idx.agent !== -1 && row[idx.agent]) ? row[idx.agent] : '未知英雄';
-                const role = getAgentRole(agentName);
+                const k = parseInt(row[kCol]) || 0;
+                const d = parseInt(row[dCol]) || 0;
+                const a = aCol !== -1 ? (parseInt(row[aCol]) || 0) : 0;
+                const acs = acsCol !== -1 ? (parseInt(row[acsCol]) || 0) : 0;
+                const fk = fkCol !== -1 ? (parseInt(row[fkCol]) || 0) : 0;
+                
+                const rawAgent = agentCol !== -1 ? row[agentCol] : 'Jett';
+                const agent = normalizeAgentName(rawAgent);
+                const role = agentRoles[agent] || '突击位';
 
-                // 记录单场明细
-                playersMap[name].matches.push({ agent: agentName, role, k, d, a, acs, fk, kd: (k/d).toFixed(2), pm: k - d });
+                const matchId = playersMap[name].matches.length + 1;
+                const pm = k - d;
 
-                // 按英雄聚合统计
-                if (!playersMap[name].agentsMap[agentName]) {
-                    playersMap[name].agentsMap[agentName] = { agent: agentName, role, count: 0, k: 0, d: 0, a: 0, acs: 0, fk: 0 };
+                playersMap[name].matches.push({ matchId, agent, role, k, d, a, acs, fk, kd: (k / (d || 1)).toFixed(2), pm });
+
+                if (!playersMap[name].agentsMap[agent]) {
+                    playersMap[name].agentsMap[agent] = { agent, role, count: 0, k: 0, d: 0, a: 0, acs: 0, fk: 0 };
                 }
-                const ag = playersMap[name].agentsMap[agentName];
-                ag.count += 1;
-                ag.k += k; ag.d += d; ag.a += a; ag.acs += acs; ag.fk += fk;
+                const ag = playersMap[name].agentsMap[agent];
+                ag.count++; ag.k += k; ag.d += d; ag.a += a; ag.acs += acs; ag.fk += fk;
 
                 playersMap[name].totalK += k;
                 playersMap[name].totalD += d;
                 playersMap[name].totalA += a;
                 playersMap[name].totalAcs += acs;
                 playersMap[name].totalFk += fk;
-            });
-
-            render(playersMap);
-        }
-
-        // 生成约100字的赛训分析
-        function generateAIComment(p, avgKd, avgAcs, totalPM) {
-            let roleSummary = Object.values(p.agentsMap).map(ag => `${ag.agent}(${ag.role})`).join('、');
-            let comment = `【赛训综合评估】该选手共登场 ${p.matches.length} 场，核心英雄池涵盖：${roleSummary}。`;
-            
-            if (avgKd >= 1.2 && totalPM > 0) {
-                comment += `整体对枪压制力极强（综合 K/D 达 ${avgKd}，净胜分 +${totalPM}），ACS 表现亮眼。建议继续巩固当前定位，在战术中给予更多资源倾斜，担当队伍的绝对突破或核心火力点。`;
-            } else if (avgKd >= 1.0) {
-                comment += `整体竞技状态稳定（综合 K/D ${avgKd}），能够很好地完成本职战术任务。建议在后续训练中重点提升残局处理的细节和首杀转化率，进一步扩大对局优势。`;
-            } else {
-                comment += `近期对枪表现略显挣扎（综合 K/D ${avgKd}，净胜分 ${totalPM}），生存率偏低。建议复盘对枪身位与补枪协同，适当优化交战时机，或针对性调整其使用的英雄定位。`;
             }
-            return comment;
+
+            saveAccountData(currentAccount, playersMap);
+            render(playersMap);
+            fileInfo.innerText = `导入成功: ${fileName} ✅`;
         }
 
+        // 4. 界面渲染
         function render(playersMap) {
-            placeholder.classList.add('hidden');
+            document.getElementById('placeholder').classList.add('hidden');
+            const dashboard = document.getElementById('dashboard');
             dashboard.classList.remove('hidden');
-            fileInfo.innerText = "数据解析成功 ✅";
-            
-            let html = '';
-            const sortedNames = Object.keys(playersMap).sort((a,b) => {
-                return (playersMap[b].totalK/playersMap[b].totalD) - (playersMap[a].totalK/playersMap[a].totalD);
-            });
 
-            sortedNames.forEach(name => {
+            let html = '';
+            const names = Object.keys(playersMap);
+
+            names.forEach((name, index) => {
                 const p = playersMap[name];
-                const avgKd = (p.totalK / p.totalD).toFixed(2);
+                const avgKd = (p.totalK / (p.totalD || 1)).toFixed(2);
                 const avgAcs = Math.round(p.totalAcs / p.matches.length);
                 const totalPM = p.totalK - p.totalD;
-
-                // 将该选手玩过的英雄按场次或表现排序
-                const aggregatedAgents = Object.values(p.agentsMap).sort((a, b) => (b.k/b.d) - (a.k/a.d));
-                const aiComment = generateAIComment(p, avgKd, avgAcs, totalPM);
+                const agents = Object.values(p.agentsMap).sort((a,b) => b.count - a.count);
 
                 html += `
                 <div class="player-card rounded-xl shadow-lg overflow-hidden mb-8">
-                    <!-- 顶层汇总 -->
                     <div class="bg-gray-900 p-6 flex flex-col lg:flex-row justify-between items-center gap-6">
                         <div class="flex items-center gap-6">
                             <div class="h-16 w-16 bg-red-600 rounded-full flex items-center justify-center text-2xl font-black italic">
                                 ${name[0].toUpperCase()}
                             </div>
                             <div>
-                                <h2 class="text-3xl font-black text-white italic tracking-tighter">${name}</h2>
-                                <p class="text-xs text-gray-500 uppercase mt-1">Total Scrims: ${p.matches.length} 场</p>
+                                <h2 class="text-3xl font-black text-white italic">${name}</h2>
+                                <p class="text-xs text-gray-400 mt-1">已记录对局: <span class="text-yellow-400 font-bold">${p.matches.length} 场</span></p>
                             </div>
                         </div>
                         
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
                             <div>
-                                <p class="text-[10px] text-gray-500 uppercase font-bold mb-1">Overall K/D</p>
-                                <p class="text-2xl font-black ${avgKd >= 1.2 ? 'text-green-400' : (avgKd < 0.9 ? 'text-red-500' : 'text-white')}">${avgKd}</p>
+                                <p class="text-[10px] text-gray-500 font-bold mb-1">Career K/D</p>
+                                <p class="text-2xl font-black ${avgKd >= 1.2 ? 'text-green-400' : (avgKd < 0.95 ? 'text-red-500' : 'text-white')}">${avgKd}</p>
                             </div>
                             <div>
-                                <p class="text-[10px] text-gray-500 uppercase font-bold mb-1">Total +/-</p>
-                                <p class="text-2xl font-black ${totalPM >= 0 ? 'text-green-400' : 'text-red-500'}">${totalPM > 0 ? '+' : ''}${totalPM}</p>
+                                <p class="text-[10px] text-gray-500 font-bold mb-1">Total +/-</p>
+                                <p class="text-2xl font-black ${totalPM >= 0 ? 'text-green-400' : 'text-red-500'}">${totalPM > 0 ? '+' + totalPM : totalPM}</p>
                             </div>
                             <div>
-                                <p class="text-[10px] text-gray-500 uppercase font-bold mb-1">Avg ACS</p>
+                                <p class="text-[10px] text-gray-500 font-bold mb-1">Avg ACS</p>
                                 <p class="text-2xl font-black text-yellow-500">${avgAcs > 0 ? avgAcs : '-'}</p>
                             </div>
                             <div>
-                                <p class="text-[10px] text-gray-500 uppercase font-bold mb-1">Total FK</p>
-                                <p class="text-2xl font-black text-blue-400">${p.totalFk > 0 ? p.totalFk : '-'}</p>
+                                <p class="text-[10px] text-gray-500 font-bold mb-1">Total FK</p>
+                                <p class="text-2xl font-black text-blue-400">${p.totalFk}</p>
                             </div>
                         </div>
                     </div>
 
-                    <!-- 中间：英雄分类汇总表（将同一英雄聚合，并标明定位） -->
-                    <div class="p-6 bg-gray-800/40 border-b border-gray-800">
-                        <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">🎮 英雄定位与池分布聚合</h3>
+                    <div class="px-6 py-3 bg-gray-800/80 border-b border-gray-700 flex justify-between items-center">
+                        <span class="text-xs font-bold text-gray-400">📋 数据视图</span>
+                        <div class="flex gap-2">
+                            <button class="toggle-btn active" onclick="switchTab(${index}, 'agg', this)">英雄池汇总</button>
+                            <button class="toggle-btn" onclick="switchTab(${index}, 'match', this)">单局历史 (${p.matches.length})</button>
+                        </div>
+                    </div>
+
+                    <div id="tab-agg-${index}" class="p-6 bg-gray-800/40">
                         <div class="overflow-x-auto">
                             <table class="w-full text-sm text-left">
-                                <thead class="text-gray-500 uppercase text-[10px] tracking-widest border-b border-gray-700">
+                                <thead class="text-gray-500 text-[10px] border-b border-gray-700">
                                     <tr>
-                                        <th class="pb-3">英雄 Agent</th>
-                                        <th class="pb-3">定位 Role</th>
-                                        <th class="pb-3">登场次数</th>
-                                        <th class="pb-3">总 K / D / A</th>
-                                        <th class="pb-3">平均 K/D</th>
-                                        <th class="pb-3">平均 ACS</th>
-                                        <th class="pb-3">总首杀 FK</th>
+                                        <th class="pb-3">英雄</th><th class="pb-3">定位</th><th class="pb-3">场次</th><th class="pb-3">K / D / A</th><th class="pb-3">K/D</th><th class="pb-3">ACS</th><th class="pb-3">FK</th>
                                     </tr>
                                 </thead>
-                                <tbody class="divide-y divide-gray-800/60">
-                                    ${aggregatedAgents.map(ag => {
-                                        const agKd = (ag.k / ag.d).toFixed(2);
-                                        const agAcs = Math.round(ag.acs / ag.count);
-                                        const roleClass = getRoleBadgeClass(ag.role);
-                                        return `
+                                <tbody class="divide-y divide-gray-800">
+                                    ${agents.map(ag => `
                                         <tr>
-                                            <td class="py-3 font-bold text-white flex items-center gap-2">
-                                                ${ag.agent}
-                                            </td>
-                                            <td class="py-3"><span class="role-badge ${roleClass}">${ag.role}</span></td>
-                                            <td class="py-3 font-mono text-gray-400">${ag.count} 场</td>
-                                            <td class="py-3 font-mono text-gray-300">${ag.k} / ${ag.d} / ${ag.a}</td>
-                                            <td class="py-3 font-bold ${agKd >= 1 ? 'text-green-400' : 'text-red-500'}">${agKd}</td>
-                                            <td class="py-3 font-mono text-yellow-500">${agAcs > 0 ? agAcs : '-'}</td>
-                                            <td class="py-3 font-bold text-blue-400">${ag.fk}</td>
+                                            <td class="py-3 font-bold">${ag.agent}</td>
+                                            <td class="py-3"><span class="role-badge ${getRoleBadgeClass(ag.role)}">${ag.role}</span></td>
+                                            <td class="py-3 text-gray-400">${ag.count}</td>
+                                            <td class="py-3 font-mono">${ag.k} / ${ag.d} / ${ag.a}</td>
+                                            <td class="py-3 font-bold ${(ag.k/ag.d)>=1 ? 'text-green-400':'text-red-500'}">${(ag.k/(ag.d||1)).toFixed(2)}</td>
+                                            <td class="py-3 text-yellow-500">${Math.round(ag.acs/ag.count) || '-'}</td>
+                                            <td class="py-3 text-blue-400">${ag.fk}</td>
                                         </tr>
-                                        `;
-                                    }).join('')}
+                                    `).join('')}
                                 </tbody>
                             </table>
                         </div>
                     </div>
 
-                    <!-- 底部：约100字的AI分析评语 -->
-                    <div class="p-6 bg-gray-900/80 border-t border-gray-800 text-sm text-gray-300 leading-relaxed flex items-start gap-3">
-                        <span class="text-xl">💡</span>
-                        <div>
-                            <span class="font-bold text-red-400 mr-2">教练分析报告：</span>
-                            ${aiComment}
+                    <div id="tab-match-${index}" class="p-6 bg-gray-800/40 hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm text-left">
+                                <thead class="text-gray-500 text-[10px] border-b border-gray-700">
+                                    <tr>
+                                        <th class="pb-3">场次</th><th class="pb-3">英雄</th><th class="pb-3">K / D / A</th><th class="pb-3">K/D</th><th class="pb-3">+/-</th><th class="pb-3">ACS</th><th class="pb-3">FK</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-800">
+                                    ${p.matches.map(m => `
+                                        <tr>
+                                            <td class="py-3 text-gray-500">#${m.matchId}</td>
+                                            <td class="py-3 font-bold">${m.agent}</td>
+                                            <td class="py-3 font-mono">${m.k} / ${m.d} / ${m.a}</td>
+                                            <td class="py-3 font-bold ${m.kd>=1 ? 'text-green-400':'text-red-500'}">${m.kd}</td>
+                                            <td class="py-3 font-mono ${m.pm>=0 ? 'text-green-400':'text-red-500'}">${m.pm>0?'+'+m.pm:m.pm}</td>
+                                            <td class="py-3 text-yellow-500">${m.acs||'-'}</td>
+                                            <td class="py-3 text-blue-400">${m.fk}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
                 `;
             });
+
             dashboard.innerHTML = html;
         }
+
+        function switchTab(idx, type, btn) {
+            const card = btn.closest('.player-card');
+            card.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            if (type === 'agg') {
+                document.getElementById(`tab-agg-${idx}`).classList.remove('hidden');
+                document.getElementById(`tab-match-${idx}`).classList.add('hidden');
+            } else {
+                document.getElementById(`tab-agg-${idx}`).classList.add('hidden');
+                document.getElementById(`tab-match-${idx}`).classList.remove('hidden');
+            }
+        }
+
+        // 拖拽支持
+        const dropZone = document.getElementById('dropZone');
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(name => {
+            dropZone.addEventListener(name, e => { e.preventDefault(); e.stopPropagation(); });
+        });
+        dropZone.addEventListener('drop', e => {
+            const dt = e.dataTransfer;
+            if (dt.files && dt.files.length > 0) processFile(dt.files[0]);
+        });
+
+        // 页面初始化加载
+        window.onload = function() {
+            initAccountUI();
+        };
     </script>
 </body>
 </html>
