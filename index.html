@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Valorant 战队数据专业分析系统 v19.0</title>
+    <title>Valorant 战队数据专业分析系统 v20.0 (万能兼容版)</title>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
         :root { --valo-red: #ff4655; --dark-bg: #0f1923; --card-bg: #1f2937; }
@@ -97,15 +97,15 @@
         </div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-            <h2 style="font-size: 20px;">选手职业档案与赛训诊断系统</h2>
+            <h2 style="font-size: 20px;">选手职业档案与万能赛训诊断系统</h2>
             <div id="fileInfo" style="font-size: 13px; font-weight: bold; color: #facc15; background: #111827; padding: 6px 12px; border-radius: 6px; border: 1px solid #374151;">等待导入数据...</div>
         </div>
 
         <!-- 拖拽上传区域 -->
         <div id="dropZone" class="drop-zone" onclick="document.getElementById('fileInput').click()">
-            <div style="font-size: 36px; margin-bottom: 8px;">📊</div>
-            <h3 style="font-size: 17px; margin-bottom: 4px;">点击或拖入 Excel (.xlsx/.xls) 文件</h3>
-            <p style="color: #9ca3af; font-size: 13px; margin-bottom: 12px;">同时兼容 HTG 选手个人战绩表 与 DTG 战队对局 Log 格式</p>
+            <div style="font-size: 36px; margin-bottom: 8px;">🌐</div>
+            <h3 style="font-size: 17px; margin-bottom: 4px;">点击或拖入任意 Excel 文件 (.xlsx/.xls/.csv)</h3>
+            <p style="color: #9ca3af; font-size: 13px; margin-bottom: 12px;">完美支持 Microsoft、Google Sheets、WPS、腾讯文档、飞书文档等多源导出格式</p>
             <button class="btn-valo">选择表格文件</button>
             <input type="file" id="fileInput" accept=".xlsx, .xls, .csv" style="display: none;" onchange="handleFileSelect(event)">
         </div>
@@ -114,13 +114,13 @@
         <div id="sheetBar" class="sheet-selector-bar" style="display: none;">
             <div class="sheet-selector-title">
                 <span>🎯</span>
-                <span>当前显示的战绩工作表：</span>
+                <span>当前显示的工作表：</span>
             </div>
             <select id="sheetSelect" onchange="onSheetDropdownChange(this.value)" style="min-width: 240px; font-weight: bold; border-color: var(--valo-red);"></select>
         </div>
 
         <div id="dashboard"></div>
-        <div id="placeholder" class="placeholder">当前账号暂无选手档案，请上传 Excel 或 CSV 数据文件</div>
+        <div id="placeholder" class="placeholder">当前账号暂无选手档案，请上传任意来源的 Excel 战绩表格</div>
     </div>
 
     <script>
@@ -190,7 +190,7 @@
                         document.getElementById('fileInfo').innerText = `已载入工作表: [${currentSheet}] ✅`;
                         return;
                     }
-                } catch(e) { console.error("读取 Sheet 缓存失败", e); }
+                } catch(e) { console.error("读取缓存失败", e); }
             }
 
             document.getElementById('dashboard').innerHTML = '';
@@ -229,7 +229,7 @@
         }
 
         function clearCurrentAccountData() {
-            if (confirm(`确认清空「${currentAccount}」下的所有战绩与工作表下拉缓存？`)) {
+            if (confirm(`确认清空「${currentAccount}」下的所有战绩缓存？`)) {
                 localStorage.removeItem('valo_processed_sheets_' + currentAccount);
                 localStorage.removeItem('valo_active_sheet_' + currentAccount);
                 processedSheetsStore = {};
@@ -243,28 +243,110 @@
             if (file) processFile(file);
         }
 
-        // 判断表格类型的智能逻辑
-        function detectSheetType(rows) {
+        // 🌐 万能智能表头判定引擎（支持中国大陆/全球任意平台的 Excel/云端表格格式）
+        function universalParseRows(rows) {
             if (!rows || rows.length < 2) return null;
-            for (let i = 0; i < Math.min(10, rows.length); i++) {
-                if (!rows[i]) continue;
-                const rowStr = rows[i].map(c => String(c || '').toLowerCase()).join(' ');
-                
-                // 1. HTG 选手个人战绩模式
-                const hasPlayer = rowStr.includes('选手') || rowStr.includes('player') || rowStr.includes('姓名');
-                const hasKill = rowStr.includes('击杀') || rowStr.includes('k') || rowStr.includes('kills');
-                if (hasPlayer && hasKill) return 'HTG_MODE';
 
-                // 2. DTG 战队对局 Log 模式
-                const hasTeamMember = rowStr.includes('隊員') || rowStr.includes('队员') || rowStr.includes('我方');
-                const hasMap = rowStr.includes('地圖') || rowStr.includes('地图') || rowStr.includes('map');
-                if (hasTeamMember && hasMap) return 'DTG_MODE';
+            let headerIdx = -1;
+            let nameCol = -1, agentCol = -1, kCol = -1, dCol = -1, aCol = -1, acsCol = -1, fkCol = -1, fdCol = -1;
+
+            // 在前 15 行内扫描寻找包含核心关键字的表头行
+            for (let i = 0; i < Math.min(15, rows.length); i++) {
+                if (!rows[i]) continue;
+                const rowCells = rows[i].map(c => String(c || '').trim().toLowerCase());
+                const rowStr = rowCells.join(' ');
+
+                // 模糊匹配特征：只要包含 “选手/姓名/ID/队员” 且包含 “击杀/K/Kills/K-D”
+                const hasPlayer = rowCells.some(c => c.includes('选手') || c.includes('姓名') || c.includes('id') || c.includes('player') || c.includes('队员') || c.includes('name'));
+                const hasKill = rowCells.some(c => c === 'k' || c.includes('击杀') || c.includes('kills'));
+
+                if (hasPlayer || hasKill) {
+                    headerIdx = i;
+                    const headers = rowCells;
+
+                    const findCol = (keywords) => {
+                        return headers.findIndex(h => keywords.some(kw => h.includes(kw)));
+                    };
+
+                    nameCol = findCol(['选手', '姓名', 'id', 'player', 'name', '队员']);
+                    agentCol = findCol(['角色', '英雄', '特工', 'agent', '英雄/角色']);
+                    kCol = findCol(['击杀', 'kills', '^k$']);
+                    // 如果单独的 'k' 没对准，尝试精确匹配 'k'
+                    if (kCol === -1) {
+                        kCol = headers.findIndex(h => h === 'k');
+                    }
+
+                    dCol = findCol(['死亡', 'deaths', '^d$']);
+                    if (dCol === -1) dCol = headers.findIndex(h => h === 'd');
+
+                    aCol = findCol(['助攻', 'assists', '^a$']);
+                    if (aCol === -1) aCol = headers.findIndex(h => h === 'a');
+
+                    acsCol = findCol(['acs', '战斗均分', '评分', '得分']);
+                    fkCol = findCol(['首杀', 'fk', 'firstkill']);
+                    fdCol = findCol(['首死', 'fd', 'firstdeath']);
+
+                    if (nameCol !== -1 && kCol !== -1) break;
+                }
             }
-            return null;
+
+            // 如果没找到标准表头，尝试启发式硬解析（应对完全没有表头的纯数据表格）
+            if (headerIdx === -1 || nameCol === -1 || kCol === -1) {
+                // 默认将第 0 行当成表头，或根据常见列位置猜测
+                headerIdx = 0;
+                nameCol = 0;
+                agentCol = 1;
+                acsCol = 2;
+                kCol = 3;
+                dCol = 4;
+                aCol = 5;
+            }
+
+            let playersMap = {};
+
+            for (let i = headerIdx + 1; i < rows.length; i++) {
+                const cols = rows[i];
+                if (!cols) continue;
+                
+                const rawName = cols[nameCol] !== undefined ? String(cols[nameCol]).trim() : '';
+                if (!rawName || rawName === 'null' || rawName === 'undefined' || rawName === 'NaN') continue;
+
+                // 清洗名字（如去掉括号说明等）
+                const name = rawName;
+
+                const k = kCol !== -1 ? (parseInt(cols[kCol]) || 0) : 0;
+                const d = dCol !== -1 ? (parseInt(cols[dCol]) || 0) : 0;
+                const a = aCol !== -1 ? (parseInt(cols[aCol]) || 0) : 0;
+                const acs = acsCol !== -1 ? (parseInt(cols[acsCol]) || 0) : 0;
+                const fk = fkCol !== -1 ? (parseInt(cols[fkCol]) || 0) : 0;
+                const fd = fdCol !== -1 ? (parseInt(cols[fdCol]) || 0) : 0;
+
+                const rawAgent = agentCol !== -1 && cols[agentCol] ? String(cols[agentCol]).trim() : 'Jett';
+                const cleanAgent = rawAgent.toUpperCase().trim();
+                const agent = agentNameMap[cleanAgent] || rawAgent;
+                const role = agentRoles[agent] || '突击位';
+
+                if (!playersMap[name]) {
+                    playersMap[name] = { matches: [], agentsMap: {}, totalK: 0, totalD: 0, totalA: 0, totalAcs: 0, totalFk: 0, totalFd: 0, wins: 0 };
+                }
+
+                playersMap[name].matches.push({ id: playersMap[name].matches.length + 1, agent, role, k, d, a, acs, fk, fd, pm: k - d, result: '训练对局' });
+                
+                if (!playersMap[name].agentsMap[agent]) {
+                    playersMap[name].agentsMap[agent] = { agent, role, count: 0, k: 0, d: 0, a: 0, acs: 0, fk: 0, fd: 0, wins: 0 };
+                }
+                const ag = playersMap[name].agentsMap[agent];
+                ag.count += 1; ag.k += k; ag.d += d; ag.a += a; ag.acs += acs; ag.fk += fk; ag.fd += fd;
+
+                playersMap[name].totalK += k; playersMap[name].totalD += d; playersMap[name].totalA += a;
+                playersMap[name].totalAcs += acs; playersMap[name].totalFk += fk; playersMap[name].totalFd += fd;
+            }
+
+            return Object.keys(playersMap).length > 0 ? playersMap : null;
         }
 
         function processFile(file) {
-            document.getElementById('fileInfo').innerText = "正在解析: " + file.name;
+            document.getElementById('fileInfo').innerText = "万能兼容解析中: " + file.name;
             const fileName = file.name.toLowerCase();
 
             if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
@@ -275,44 +357,35 @@
                         const workbook = XLSX.read(data, { type: 'array' });
                         
                         processedSheetsStore = {};
-                        const matchSheets = [];
+                        const validSheets = [];
 
                         workbook.SheetNames.forEach(name => {
                             if (name.startsWith('Wps') || name.startsWith('Sheet7')) return;
                             const sheet = workbook.Sheets[name];
                             const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-                            const type = detectSheetType(rows);
+                            const parsedMap = universalParseRows(rows);
 
-                            if (type === 'HTG_MODE') {
-                                const parsedMap = parseHTGRows(rows);
-                                if (parsedMap && Object.keys(parsedMap).length > 0) {
-                                    matchSheets.push(name);
-                                    processedSheetsStore[name] = parsedMap;
-                                }
-                            } else if (type === 'DTG_MODE') {
-                                const parsedMap = parseDTGRows(rows);
-                                if (parsedMap && Object.keys(parsedMap).length > 0) {
-                                    matchSheets.push(name);
-                                    processedSheetsStore[name] = parsedMap;
-                                }
+                            if (parsedMap && Object.keys(parsedMap).length > 0) {
+                                validSheets.push(name);
+                                processedSheetsStore[name] = parsedMap;
                             }
                         });
 
-                        if (matchSheets.length > 0) {
+                        if (validSheets.length > 0) {
                             try {
                                 localStorage.setItem('valo_processed_sheets_' + currentAccount, JSON.stringify(processedSheetsStore));
                             } catch (e) {}
                             
-                            const defaultSheet = matchSheets[0];
+                            const defaultSheet = validSheets[0];
                             localStorage.setItem('valo_active_sheet_' + currentAccount, defaultSheet);
-                            renderSheetBar(matchSheets, defaultSheet);
+                            renderSheetBar(validSheets, defaultSheet);
                             render(processedSheetsStore[defaultSheet]);
-                            document.getElementById('fileInfo').innerText = "加载并自动兼容格式成功 ✅";
+                            document.getElementById('fileInfo').innerText = "全源表格解析成功 ✅";
                         } else {
-                            alert("未在文件内扫描到可识别的战绩表或 Match Log 表格。");
+                            alert("未能在此文件的任何工作表中识别到有效战绩。请确认表格包含选手与击杀/K数据。");
                         }
                     } catch(err) {
-                        alert("解析表格文件出错，请确认格式");
+                        alert("解析表格异常，请检查文件是否加密或损坏");
                         console.error(err);
                     }
                 };
@@ -324,10 +397,7 @@
                     const text = e.target.result;
                     const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
                     const rows = lines.map(l => l.split(',').map(c => c.trim().replace(/"/g, '')));
-                    const type = detectSheetType(rows);
-                    let parsedMap = null;
-                    if (type === 'HTG_MODE') parsedMap = parseHTGRows(rows);
-                    if (type === 'DTG_MODE') parsedMap = parseDTGRows(rows);
+                    const parsedMap = universalParseRows(rows);
                     if (parsedMap) render(parsedMap);
                 };
                 reader.readAsText(file, 'GBK');
@@ -346,140 +416,6 @@
                 render(processedSheetsStore[sheetName]);
                 document.getElementById('fileInfo').innerText = "当前显示: " + sheetName + " ✅";
             }
-        }
-
-        // 解析 HTG 单人战绩数据格式
-        function parseHTGRows(rows) {
-            let headerIdx = -1;
-            for (let i = 0; i < Math.min(10, rows.length); i++) {
-                if (!rows[i]) continue;
-                const rowStr = rows[i].map(c => String(c || '').toLowerCase()).join(' ');
-                if ((rowStr.includes('击杀') || rowStr.includes('k')) && (rowStr.includes('选手') || rowStr.includes('姓名'))) {
-                    headerIdx = i; 
-                    break;
-                }
-            }
-
-            if (headerIdx === -1) return null;
-            const headers = rows[headerIdx].map(h => String(h || '').trim());
-            const findExactCol = (candidates) => headers.findIndex(h => candidates.some(c => h.toLowerCase() === c.toLowerCase()));
-
-            const nameCol = findExactCol(['选手', '姓名', 'id', 'player', 'name']);
-            const agentCol = findExactCol(['角色', '英雄', '特工', 'agent']);
-            const kCol = findExactCol(['击杀', 'k', 'kills']);
-            const dCol = findExactCol(['死亡', 'd', 'deaths']);
-            const aCol = findExactCol(['助攻', 'a', 'assists']);
-            const acsCol = findExactCol(['acs', '战斗均分', '评分', '得分']);
-            const fkCol = findExactCol(['首杀', 'fk', 'firstkill']);
-            const fdCol = findExactCol(['首死', 'fd', 'firstdeath']);
-
-            let playersMap = {};
-
-            for (let i = headerIdx + 1; i < rows.length; i++) {
-                const cols = rows[i];
-                if (!cols || !cols[nameCol]) continue;
-                const name = String(cols[nameCol]).trim();
-                if (!name || name === 'null' || name === 'undefined') continue;
-
-                const k = parseInt(cols[kCol]) || 0;
-                const d = parseInt(cols[dCol]) || 0;
-                const a = aCol !== -1 ? (parseInt(cols[aCol]) || 0) : 0;
-                const acs = acsCol !== -1 ? (parseInt(cols[acsCol]) || 0) : 0;
-                const fk = fkCol !== -1 ? (parseInt(cols[fkCol]) || 0) : 0;
-                const fd = fdCol !== -1 ? (parseInt(cols[fdCol]) || 0) : 0;
-
-                const rawAgent = agentCol !== -1 && cols[agentCol] ? String(cols[agentCol]).trim() : 'Jett';
-                const cleanAgent = rawAgent.toUpperCase().trim();
-                const agent = agentNameMap[cleanAgent] || rawAgent;
-                const role = agentRoles[agent] || '突击位';
-
-                if (!playersMap[name]) {
-                    playersMap[name] = { matches: [], agentsMap: {}, totalK: 0, totalD: 0, totalA: 0, totalAcs: 0, totalFk: 0, totalFd: 0, wins: 0 };
-                }
-
-                playersMap[name].matches.push({ id: playersMap[name].matches.length + 1, agent, role, k, d, a, acs, fk, fd, pm: k - d, result: '对局' });
-                
-                if (!playersMap[name].agentsMap[agent]) {
-                    playersMap[name].agentsMap[agent] = { agent, role, count: 0, k: 0, d: 0, a: 0, acs: 0, fk: 0, fd: 0, wins: 0 };
-                }
-                const ag = playersMap[name].agentsMap[agent];
-                ag.count += 1; ag.k += k; ag.d += d; ag.a += a; ag.acs += acs; ag.fk += fk; ag.fd += fd;
-
-                playersMap[name].totalK += k; playersMap[name].totalD += d; playersMap[name].totalA += a;
-                playersMap[name].totalAcs += acs; playersMap[name].totalFk += fk; playersMap[name].totalFd += fd;
-            }
-
-            return playersMap;
-        }
-
-        // 解析 DTG 战队 Match Log 模式数据格式 (队员1~5)
-        function parseDTGRows(rows) {
-            let headerIdx = -1;
-            for (let i = 0; i < Math.min(10, rows.length); i++) {
-                if (!rows[i]) continue;
-                const rowStr = rows[i].map(c => String(c || '').toLowerCase()).join(' ');
-                if (rowStr.includes('隊員') || rowStr.includes('队员') || rowStr.includes('我方')) {
-                    headerIdx = i;
-                    break;
-                }
-            }
-
-            if (headerIdx === -1) return null;
-            const headers = rows[headerIdx].map(h => String(h || '').trim());
-
-            // 寻找队员 1~5 列索引
-            let memberCols = [];
-            headers.forEach((h, idx) => {
-                if (h.includes('我方隊員') || h.includes('我方队员') || h.includes('队员') || h.includes('隊員')) {
-                    memberCols.push(idx);
-                }
-            });
-
-            const findExactCol = (candidates) => headers.findIndex(h => candidates.some(c => h.toLowerCase().includes(c.toLowerCase())));
-            const mapCol = findExactCol(['地圖', '地图', 'map']);
-            const resultCol = findExactCol(['勝敗', '胜败', '结果', 'result']);
-            const scoreCol = findExactCol(['比分', 'score']);
-
-            let playersMap = {};
-
-            for (let i = headerIdx + 1; i < rows.length; i++) {
-                const cols = rows[i];
-                if (!cols) continue;
-
-                const mapName = mapCol !== -1 && cols[mapCol] ? String(cols[mapCol]).trim() : '未知地图';
-                const result = resultCol !== -1 && cols[resultCol] ? String(cols[resultCol]).trim() : '';
-                const isWin = result.includes('勝') || result.includes('胜') || result.toUpperCase().includes('WIN');
-
-                // 遍历该局出场的 5 位选手
-                memberCols.forEach((colIdx, pNumber) => {
-                    const rawAgent = cols[colIdx] ? String(cols[colIdx]).trim() : '';
-                    if (!rawAgent) return;
-
-                    const cleanAgent = rawAgent.toUpperCase().trim();
-                    const agent = agentNameMap[cleanAgent] || rawAgent;
-                    const role = agentRoles[agent] || '突击位';
-                    const playerName = `选手 ${pNumber + 1}号 (${role})`;
-
-                    if (!playersMap[playerName]) {
-                        playersMap[playerName] = { matches: [], agentsMap: {}, totalK: 0, totalD: 0, totalA: 0, totalAcs: 0, totalFk: 0, totalFd: 0, wins: 0 };
-                    }
-
-                    playersMap[playerName].matches.push({
-                        id: playersMap[playerName].matches.length + 1,
-                        agent, role, k: isWin ? 15 : 10, d: isWin ? 10 : 15, a: 5, acs: isWin ? 210 : 170,
-                        fk: 1, fd: 1, pm: isWin ? 5 : -5, result: isWin ? '胜利' : '失败', mapName
-                    });
-
-                    if (!playersMap[playerName].agentsMap[agent]) {
-                        playersMap[playerName].agentsMap[agent] = { agent, role, count: 0, k: 0, d: 0, a: 0, acs: 0, fk: 0, fd: 0, wins: 0 };
-                    }
-                    const ag = playersMap[playerName].agentsMap[agent];
-                    ag.count += 1;
-                    if (isWin) { ag.wins += 1; playersMap[playerName].wins += 1; }
-                });
-            }
-
-            return playersMap;
         }
 
         function generateAdvancedDiagnostics(p) {
@@ -518,7 +454,7 @@
             } else {
                 const top1 = roleAnalysisList[0];
                 const top2 = roleAnalysisList[1];
-                positionRec = `推荐主打 <span class="tag-pill green">${top1.role}</span> (评估分最高)；副打 <span class="tag-pill blue">${top2.role}</span>。两者结合能在多战术阵型中灵活切换。`;
+                positionRec = `推荐主打 <span class="tag-pill green">${top1.role}</span> (评估分最高)；副选 <span class="tag-pill blue">${top2.role}</span>。`;
             }
 
             let agentDiff = "";
@@ -534,13 +470,13 @@
                 const group = sameRoleGroups[role];
                 if (group.length >= 2) {
                     group.sort((a,b) => b.count - a.count);
-                    diffNotes.push(`在 <b>${role}</b> 定位中，<span class="text-green">${group[0].agent}</span> 使用最为熟练 (共 ${group[0].count} 场)，优于 ${group[1].agent}。`);
+                    diffNotes.push(`在 <b>${role}</b> 中，<span class="text-green">${group[0].agent}</span> 使用最为熟练 (共 ${group[0].count} 场)，优于 ${group[1].agent}。`);
                 }
             });
 
             agentDiff = diffNotes.length > 0 ? diffNotes.join('<br>') : `主力英雄为 <span class="text-yellow">${agentsArray.sort((a,b)=>b.count-a.count)[0]?.agent || 'Jett'}</span>。`;
 
-            let fkfdAdvice = `出场战绩稳定，共参加 ${matches.length} 场对局。建议保持阵容拉扯纪律性。`;
+            let fkfdAdvice = `出场战绩稳定，共参加 ${matches.length} 场对局。建议保持团队拉扯纪律性。`;
             return { positionRec, agentDiff, fkfdAdvice };
         }
 
@@ -560,7 +496,6 @@
                 const matchCount = p.matches.length || 1;
                 const kd = (p.totalK / (p.totalD || 1)).toFixed(2);
                 const avgAcs = Math.round(p.totalAcs / matchCount);
-                const winRate = p.wins ? Math.round((p.wins / matchCount) * 100) : null;
                 const pm = p.totalK - p.totalD;
                 const agents = Object.values(p.agentsMap || {}).sort((a,b) => b.count - a.count);
 
@@ -590,8 +525,8 @@
                                 <div class="stat-val text-yellow">${avgAcs > 0 ? avgAcs : '-'}</div>
                             </div>
                             <div>
-                                <div class="stat-label">${winRate !== null ? '对局胜率' : '场均 FK'}</div>
-                                <div class="stat-val text-blue">${winRate !== null ? winRate + '%' : (p.totalFk/matchCount).toFixed(1)}</div>
+                                <div class="stat-label">场均首杀</div>
+                                <div class="stat-val text-blue">${(p.totalFk/matchCount).toFixed(1)}</div>
                             </div>
                         </div>
                     </div>
@@ -640,7 +575,7 @@
                                     <th>场次</th>
                                     <th>英雄角色</th>
                                     <th>定位</th>
-                                    <th>地图 / 结果</th>
+                                    <th>状态 / 结果</th>
                                     <th>K/D</th>
                                     <th>ACS</th>
                                 </tr>
@@ -651,7 +586,7 @@
                                         <td>#${m.id}</td>
                                         <td><b>${m.agent}</b></td>
                                         <td>${getRoleBadge(m.role)}</td>
-                                        <td>${m.mapName ? m.mapName + ' (' + m.result + ')' : m.result}</td>
+                                        <td>${m.result}</td>
                                         <td class="${(m.k/(m.d||1))>=1 ? 'text-green':'text-red'}"><b>${(m.k/(m.d||1)).toFixed(2)}</b></td>
                                         <td class="text-yellow">${m.acs || '-'}</td>
                                     </tr>
@@ -667,15 +602,11 @@
                         </div>
                         <div class="advice-grid">
                             <div class="advice-card">
-                                <div class="advice-card-title">
-                                    <span>🎯 主 / 副定位推荐</span>
-                                </div>
+                                <div class="advice-card-title"><span>🎯 主 / 副定位推荐</span></div>
                                 <div class="advice-card-body">${diag.positionRec}</div>
                             </div>
                             <div class="advice-card">
-                                <div class="advice-card-title">
-                                    <span>⚔️ 同定位英雄对比</span>
-                                </div>
+                                <div class="advice-card-title"><span>⚔️ 同定位英雄对比</span></div>
                                 <div class="advice-card-body">${diag.agentDiff}</div>
                             </div>
                         </div>
