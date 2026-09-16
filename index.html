@@ -3,8 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Valorant 战队数据专业分析系统 v5.0 - 账号档案中心</title>
+    <title>Valorant 战队数据专业分析系统 v5.1 - 账号档案中心</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 SheetJS 库，用于在浏览器端直接解析 Excel (.xlsx / .xls) 文件 -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
         :root { --valo-red: #ff4655; --dark-bg: #0f1923; }
         body { background-color: var(--dark-bg); color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
@@ -49,20 +51,20 @@
         <div class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4 px-2">
             <div>
                 <h2 class="text-2xl font-bold text-white">选手长期职业档案中心</h2>
-                <p class="text-gray-400 text-sm mt-1">支持多次导入训练赛，自动为每位选手累积跨场次综合表现与英雄池</p>
+                <p class="text-gray-400 text-sm mt-1">支持多次导入训练赛（Excel 与 CSV），自动累加跨场次综合表现与英雄池</p>
             </div>
             <div id="fileInfo" class="text-sm font-mono text-gray-500">等待导入数据...</div>
         </div>
 
         <!-- 上传区 -->
         <div id="dropZone" class="drop-zone rounded-2xl p-10 text-center shadow-2xl mb-12">
-            <div class="text-5xl mb-4">📁</div>
-            <h3 class="text-xl font-bold mb-2">上传新的训练赛 CSV 统计表格</h3>
-            <p class="text-gray-400 text-sm mb-6">数据将自动累加并更新至当前账号的选手个人职业档案库中</p>
-            <label for="fileInput" class="btn-valo">选择电脑上的 CSV 文件</label>
-            <input type="file" id="fileInput" accept=".csv" class="hidden">
+            <div class="text-5xl mb-4">📊</div>
+            <h3 class="text-xl font-bold mb-2">拖入或上传训练赛数据文件</h3>
+            <p class="text-gray-400 text-sm mb-6">支持 Excel 表格 (.xlsx, .xls) 或 CSV 文件</p>
+            <label for="fileInput" class="btn-valo">选择电脑上的文件</label>
+            <input type="file" id="fileInput" accept=".csv, .xlsx, .xls" class="hidden">
             <div class="mt-4 text-xs text-gray-500">
-                支持表头兼容：姓名/选手/玩家，英雄，K/击杀，D/死亡，A/助攻，ACS/评分，首杀/First Kill/FK
+                支持兼容表头：姓名/选手/玩家，英雄，K/击杀，D/死亡，A/助攻，ACS/评分，首杀/First Kill/FK
             </div>
         </div>
 
@@ -71,7 +73,7 @@
 
         <!-- 占位提示 -->
         <div id="placeholder" class="py-16 text-center text-gray-600 border border-dashed border-gray-800 rounded-xl">
-            <p class="text-lg">当前账号暂无选手档案，请先上方上传训练赛表格</p>
+            <p class="text-lg">当前账号暂无选手档案，请上方上传训练赛表格</p>
         </div>
     </div>
 
@@ -131,7 +133,6 @@
             localStorage.setItem(getAccountStorageKey(accountName), JSON.stringify(playersMap));
         }
 
-        // 初始化账号下拉菜单
         function initAccountUI() {
             const select = document.getElementById('accountSelect');
             const accounts = getAccountsList();
@@ -143,7 +144,6 @@
             select.innerHTML = accounts.map(acc => `<option value="${acc}" ${acc === currentAccount ? 'selected' : ''}>账号: ${acc}</option>`).join('');
             document.getElementById('currentAccountDisplay').innerText = currentAccount;
 
-            // 加载当前账号的数据并渲染
             const data = loadAccountData(currentAccount);
             if (data && Object.keys(data).length > 0) {
                 render(data);
@@ -181,7 +181,7 @@
             }
         }
 
-        // --- 拖拽与文件上传监听 ---
+        // --- 文件拖拽与上传分流监听 ---
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
         const dashboard = document.getElementById('dashboard');
@@ -198,23 +198,47 @@
         fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
 
         function handleFile(file) {
-            if (!file || !file.name.toLowerCase().endsWith('.csv')) {
-                alert('请上传 .csv 格式的文件！');
-                return;
-            }
+            if (!file) return;
+            const fileName = file.name.toLowerCase();
             fileInfo.innerText = `正在读取: ${file.name}...`;
-            const reader = new FileReader();
-            reader.readAsText(file, 'GBK');
-            reader.onload = function(e) {
-                let content = e.target.result;
-                if (content.includes('')) {
-                    const readerRetry = new FileReader();
-                    readerRetry.readAsText(file, 'UTF-8');
-                    readerRetry.onload = (evt) => parseAndMergeCSV(evt.target.result);
-                } else {
-                    parseAndMergeCSV(content);
-                }
-            };
+
+            if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+                // 处理 Excel 文件
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        // 默认读取第一个工作表 (Sheet1)
+                        const firstSheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[firstSheetName];
+                        // 转换为 CSV 文本，复用原有的解析逻辑
+                        const csvText = XLSX.utils.sheet_to_csv(worksheet);
+                        parseAndMergeCSV(csvText);
+                    } catch (err) {
+                        alert("解析 Excel 文件失败，请确保文件未损坏或格式正确。");
+                        fileInfo.innerText = "解析出错 ❌";
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            } else if (fileName.endsWith('.csv')) {
+                // 处理 CSV 文件
+                const reader = new FileReader();
+                reader.readAsText(file, 'GBK');
+                reader.onload = function(e) {
+                    let content = e.target.result;
+                    if (content.includes('')) {
+                        const readerRetry = new FileReader();
+                        readerRetry.readAsText(file, 'UTF-8');
+                        readerRetry.onload = (evt) => parseAndMergeCSV(evt.target.result);
+                    } else {
+                        parseAndMergeCSV(content);
+                    }
+                };
+            } else {
+                alert('请上传支持的 .csv、.xlsx 或 .xls 格式文件！');
+                fileInfo.innerText = "格式不支持 ❌";
+            }
         }
 
         function findColumnIndex(headers, possibleNames) {
@@ -228,7 +252,7 @@
         // 解析并与当前账号已有的长期档案进行“累加聚合”
         function parseAndMergeCSV(text) {
             const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
-            if (lines.length < 2) { alert("文件内容不足"); return; }
+            if (lines.length < 2) { alert("文件内容不足或表格为空"); return; }
 
             const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
             const idx = {
@@ -242,11 +266,10 @@
             };
 
             if (idx.name === -1 || idx.k === -1 || idx.d === -1) {
-                alert("错误：无法在 CSV 中识别出「姓名/选手/玩家」、「K/击杀」或「D/死亡」列。");
+                alert("错误：无法在表格中识别出「姓名/选手/玩家」、「K/击杀」或「D/死亡」列。");
                 return;
             }
 
-            // 读取当前账号已有的长期档案，如果没有则新建空对象
             let playersMap = loadAccountData(currentAccount) || {};
 
             lines.slice(1).forEach(line => {
@@ -270,7 +293,6 @@
                 const agentName = (idx.agent !== -1 && row[idx.agent]) ? row[idx.agent] : 'Jett';
                 const role = getAgentRole(agentName);
 
-                // 全局累计场次序号自增
                 const newMatchId = playersMap[name].matches.length + 1;
 
                 playersMap[name].matches.push({ 
@@ -296,7 +318,6 @@
                 playersMap[name].totalFk += fk;
             });
 
-            // 保存到该账号的长期档案中
             saveAccountData(currentAccount, playersMap);
             render(playersMap);
         }
@@ -366,7 +387,6 @@
 
                 html += `
                 <div class="player-card rounded-xl shadow-lg overflow-hidden mb-8" id="player-card-${index}">
-                    <!-- 顶层汇总 -->
                     <div class="bg-gray-900 p-6 flex flex-col lg:flex-row justify-between items-center gap-6">
                         <div class="flex items-center gap-6">
                             <div class="h-16 w-16 bg-red-600 rounded-full flex items-center justify-center text-2xl font-black italic shadow-inner">
@@ -398,7 +418,6 @@
                         </div>
                     </div>
 
-                    <!-- 切换按钮栏 -->
                     <div class="px-6 py-3 bg-gray-800/80 border-b border-gray-700 flex justify-between items-center">
                         <span class="text-xs font-bold text-gray-400 uppercase tracking-widest">📋 职业档案视图切换</span>
                         <div class="flex gap-2">
@@ -407,7 +426,6 @@
                         </div>
                     </div>
 
-                    <!-- 视图 A：长期英雄聚合表现表 -->
                     <div id="view-aggregated-${index}" class="p-6 bg-gray-800/40 border-b border-gray-800">
                         <div class="overflow-x-auto">
                             <table class="w-full text-sm text-left">
@@ -444,7 +462,6 @@
                         </div>
                     </div>
 
-                    <!-- 视图 B：历史全部单局明细表 -->
                     <div id="view-matches-${index}" class="p-6 bg-gray-800/40 border-b border-gray-800 hidden">
                         <div class="overflow-x-auto">
                             <table class="w-full text-sm text-left">
@@ -481,7 +498,6 @@
                         </div>
                     </div>
 
-                    <!-- 底部：长期赛训教练职业复盘报告 -->
                     <div class="p-6 bg-gray-900/90 border-t border-gray-800 text-sm text-gray-300 leading-relaxed flex items-start gap-3">
                         <span class="text-2xl">💡</span>
                         <div>
@@ -512,7 +528,6 @@
             }
         }
 
-        // 页面首次加载时初始化账号下拉与长期档案
         window.addEventListener('DOMContentLoaded', () => {
             initAccountUI();
         });
