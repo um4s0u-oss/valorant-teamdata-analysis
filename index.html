@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Valorant 战队数据专业分析系统 v12.0</title>
+    <title>Valorant 战队数据专业分析系统 v13.0</title>
+    <!-- 引入官方 Excel 解析库，支持直接读取 .xlsx / .xls 文件 -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
         :root { --valo-red: #ff4655; --dark-bg: #0f1923; --card-bg: #1f2937; }
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -27,7 +29,7 @@
         .btn-danger:hover { background-color: #991b1b; }
 
         .drop-zone { border: 2px dashed #4b5563; background: #1a232e; border-radius: 16px; padding: 40px; text-align: center; cursor: pointer; margin-bottom: 30px; transition: 0.2s; }
-        .drop-zone:hover { border-color: var(--valo-red); background: #232d3b; }
+        .drop-zone:hover, .drop-zone.dragover { border-color: var(--valo-red); background: #232d3b; }
 
         .player-card { background-color: var(--card-bg); border-left: 5px solid var(--valo-red); border-radius: 12px; margin-bottom: 24px; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3); }
         .player-header { background: #111827; padding: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; }
@@ -90,17 +92,18 @@
             <div id="fileInfo" style="font-size: 13px; font-weight: bold; color: #facc15; background: #111827; padding: 6px 12px; border-radius: 6px; border: 1px solid #374151;">等待导入数据...</div>
         </div>
 
+        <!-- 拖拽与上传区域（支持 .xlsx, .xls, .csv） -->
         <div id="dropZone" class="drop-zone" onclick="document.getElementById('fileInput').click()">
             <div style="font-size: 40px; margin-bottom: 10px;">📊</div>
-            <h3 style="font-size: 18px; margin-bottom: 6px;">点击或拖入 CSV 数据文件</h3>
-            <p style="color: #9ca3af; font-size: 13px; margin-bottom: 16px;">如果您的文件是 Excel (.xlsx)，请在 Excel 中另存为 **.csv** 格式导入</p>
-            <button class="btn-valo">选择 CSV 文件</button>
-            <input type="file" id="fileInput" accept=".csv" style="display: none;" onchange="handleFileSelect(event)">
+            <h3 style="font-size: 18px; margin-bottom: 6px;">点击或拖入 Excel (.xlsx/.xls) 或 CSV 文件</h3>
+            <p style="color: #9ca3af; font-size: 13px; margin-bottom: 16px;">全面兼容表格数据，即拖即用</p>
+            <button class="btn-valo">选择表格文件</button>
+            <input type="file" id="fileInput" accept=".xlsx, .xls, .csv" style="display: none;" onchange="handleFileSelect(event)">
         </div>
 
         <!-- 数据面板 -->
         <div id="dashboard"></div>
-        <div id="placeholder" class="placeholder">当前账号暂无选手档案，请上传 CSV 文件数据</div>
+        <div id="placeholder" class="placeholder">当前账号暂无选手档案，请上传 Excel 或 CSV 数据文件</div>
     </div>
 
     <script>
@@ -154,6 +157,9 @@
             select.innerHTML = accs.map(a => `<option value="${a}" ${a === currentAccount ? 'selected' : ''}>${a}</option>`).join('');
             document.getElementById('currentAccountDisplay').innerText = currentAccount;
 
+            // 初始化拖拽响应
+            setupDragAndDrop();
+
             const data = loadData(currentAccount);
             if (data && Object.keys(data).length > 0) {
                 render(data);
@@ -163,6 +169,25 @@
                 document.getElementById('placeholder').style.display = 'block';
                 document.getElementById('fileInfo').innerText = "当前账号无数据";
             }
+        }
+
+        // 绑定拖拽事件
+        function setupDragAndDrop() {
+            const dz = document.getElementById('dropZone');
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dz.addEventListener(eventName, (e) => { e.preventDefault(); e.stopPropagation(); }, false);
+            });
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dz.addEventListener(eventName, () => dz.classList.add('dragover'), false);
+            });
+            ['dragleave', 'drop'].forEach(eventName => {
+                dz.addEventListener(eventName, () => dz.classList.remove('dragover'), false);
+            });
+            dz.addEventListener('drop', (e) => {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                if (files.length) processFile(files[0]);
+            });
         }
 
         function switchAccount(val) { currentAccount = val; localStorage.setItem('valo_active_acc', currentAccount); initUI(); }
@@ -191,31 +216,69 @@
 
         function handleFileSelect(evt) {
             const file = evt.target.files[0];
-            if (!file) return;
-            document.getElementById('fileInfo').innerText = "读取中: " + file.name;
-            const reader = new FileReader();
-            reader.onload = function(e) { parseCSV(e.target.result, file.name); };
-            reader.readAsText(file, 'GBK');
+            if (file) processFile(file);
         }
 
-        // 严密防错的表头查找逻辑
-        function parseCSV(text, fileName) {
-            const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
-            if (lines.length < 2) { alert("CSV文件无有效数据"); return; }
+        // 核心文件处理入口：支持直接读取 .xlsx, .xls, .csv
+        function processFile(file) {
+            document.getElementById('fileInfo').innerText = "解析中: " + file.name;
+            const fileName = file.name.toLowerCase();
 
-            let headerIdx = 0;
-            for(let i=0; i<Math.min(5, lines.length); i++) {
-                if(lines[i].includes('击杀') || lines[i].includes('选手') || lines[i].includes('K')) {
+            if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        // 默认读取第一个或包含“数据”的工作表 Sheet
+                        let sheetName = workbook.SheetNames[0];
+                        for(let name of workbook.SheetNames) {
+                            if(name.includes('数据') || name.includes('记录')) { sheetName = name; break; }
+                        }
+                        const worksheet = workbook.Sheets[sheetName];
+                        // 转换为二维数组并进行统计分析
+                        const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                        parseStructuredRows(rows, file.name);
+                    } catch(err) {
+                        alert("Excel 文件解析失败，请确保格式正确");
+                        console.error(err);
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            } else {
+                // 读取 CSV 格式
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const text = e.target.result;
+                    const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+                    const rows = lines.map(l => l.split(',').map(c => c.trim().replace(/"/g, '')));
+                    parseStructuredRows(rows, file.name);
+                };
+                reader.readAsText(file, 'GBK');
+            }
+        }
+
+        // 解析二维矩阵数据（无论是 Excel 解析出来的还是 CSV 解析出来的）
+        function parseStructuredRows(rows, fileName) {
+            if (!rows || rows.length < 2) { alert("文件中无有效数据"); return; }
+
+            let headerIdx = -1;
+            for (let i = 0; i < Math.min(10, rows.length); i++) {
+                const rowStr = rows[i].join(' ');
+                if (rowStr.includes('击杀') || rowStr.includes('选手') || rowStr.includes('K')) {
                     headerIdx = i; break;
                 }
             }
 
-            const headers = lines[headerIdx].split(',').map(h => h.trim().replace(/"/g, ''));
+            if (headerIdx === -1) {
+                alert("未检测到有效表头，请确认表格中是否包含【选手】、【击杀】、【死亡】列！");
+                return;
+            }
 
-            // 使用准确匹配规则：彻底防范 ACS 抢占 助攻/A
+            const headers = rows[headerIdx].map(h => String(h || '').trim());
             const findExactCol = (candidates) => {
                 return headers.findIndex(h => {
-                    const cleanH = h.trim().toLowerCase();
+                    const cleanH = h.toLowerCase();
                     return candidates.some(c => cleanH === c.toLowerCase());
                 });
             };
@@ -224,34 +287,29 @@
             const agentCol = findExactCol(['角色', '英雄', '特工', 'agent']);
             const kCol = findExactCol(['击杀', 'k', 'kills']);
             const dCol = findExactCol(['死亡', 'd', 'deaths']);
-            
-            // 助攻 (A) 专有匹配
-            let aCol = findExactCol(['助攻', 'a', 'assists']);
-            
-            // ACS 专有匹配
-            let acsCol = findExactCol(['acs', '战斗均分', '评分', '得分']);
-
+            const aCol = findExactCol(['助攻', 'a', 'assists']);
+            const acsCol = findExactCol(['acs', '战斗均分', '评分', '得分']);
             const fkCol = findExactCol(['首杀', 'fk', 'firstkill']);
 
             if (nameCol === -1 || kCol === -1 || dCol === -1) {
-                alert(`未找到必要的列！找到的列: [${headers.join(', ')}]\n请确保包含【选手】、【击杀】、【死亡】列。`);
+                alert(`表头定位失败！识别到的列: [${headers.join(', ')}]\n必须包含【选手】、【击杀】、【死亡】。`);
                 return;
             }
 
-            let playersMap = {}; // 重新解析以确保覆盖准确
+            let playersMap = {};
 
-            for (let i = headerIdx + 1; i < lines.length; i++) {
-                const cols = lines[i].split(',').map(c => c.trim().replace(/"/g, ''));
-                if (!cols[nameCol]) continue;
+            for (let i = headerIdx + 1; i < rows.length; i++) {
+                const cols = rows[i];
+                if (!cols || !cols[nameCol]) continue;
 
-                const name = cols[nameCol];
+                const name = String(cols[nameCol]).trim();
                 const k = parseInt(cols[kCol]) || 0;
                 const d = parseInt(cols[dCol]) || 0;
                 const a = aCol !== -1 ? (parseInt(cols[aCol]) || 0) : 0;
                 const acs = acsCol !== -1 ? (parseInt(cols[acsCol]) || 0) : 0;
                 const fk = fkCol !== -1 ? (parseInt(cols[fkCol]) || 0) : 0;
 
-                const rawAgent = agentCol !== -1 && cols[agentCol] ? cols[agentCol] : 'Jett';
+                const rawAgent = agentCol !== -1 && cols[agentCol] ? String(cols[agentCol]).trim() : 'Jett';
                 const cleanAgent = rawAgent.toUpperCase().trim();
                 const agent = agentNameMap[cleanAgent] || rawAgent;
                 const role = agentRoles[agent] || '突击位';
