@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Valorant 战队数据专业分析系统 v5.1 - 账号档案中心</title>
+    <title>Valorant 战队数据专业分析系统 v5.2 - 账号档案中心</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 引入 SheetJS 库，用于在浏览器端直接解析 Excel (.xlsx / .xls) 文件 -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
         :root { --valo-red: #ff4655; --dark-bg: #0f1923; }
@@ -64,7 +63,7 @@
             <label for="fileInput" class="btn-valo">选择电脑上的文件</label>
             <input type="file" id="fileInput" accept=".csv, .xlsx, .xls" class="hidden">
             <div class="mt-4 text-xs text-gray-500">
-                支持兼容表头：姓名/选手/玩家，英雄，K/击杀，D/死亡，A/助攻，ACS/评分，首杀/First Kill/FK
+                支持表头：姓名/选手/玩家，英雄/特工，K/击杀，D/死亡，A/助攻，ACS/评分，首杀/First Kill/FK
             </div>
         </div>
 
@@ -203,16 +202,13 @@
             fileInfo.innerText = `正在读取: ${file.name}...`;
 
             if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
-                // 处理 Excel 文件
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     try {
                         const data = new Uint8Array(e.target.result);
                         const workbook = XLSX.read(data, { type: 'array' });
-                        // 默认读取第一个工作表 (Sheet1)
                         const firstSheetName = workbook.SheetNames[0];
                         const worksheet = workbook.Sheets[firstSheetName];
-                        // 转换为 CSV 文本，复用原有的解析逻辑
                         const csvText = XLSX.utils.sheet_to_csv(worksheet);
                         parseAndMergeCSV(csvText);
                     } catch (err) {
@@ -222,7 +218,6 @@
                 };
                 reader.readAsArrayBuffer(file);
             } else if (fileName.endsWith('.csv')) {
-                // 处理 CSV 文件
                 const reader = new FileReader();
                 reader.readAsText(file, 'GBK');
                 reader.onload = function(e) {
@@ -241,10 +236,22 @@
             }
         }
 
-        function findColumnIndex(headers, possibleNames) {
+        // 修复后的精确/安全列名匹配函数（防止 "D" 错误匹配到 Damage 或 ADR 等列）
+        function findColumnIndex(headers, possibleNames, isExactMatchOnly = false) {
             for (let name of possibleNames) {
-                const index = headers.findIndex(h => h.toLowerCase() === name.toLowerCase() || h.includes(name));
+                const cleanName = name.toLowerCase();
+                // 1. 先尝试完全相等匹配
+                let index = headers.findIndex(h => h.trim().toLowerCase() === cleanName);
                 if (index !== -1) return index;
+
+                // 2. 如果不是只允许完全匹配，再尝试安全包含匹配（针对长词如 "kills", "deaths"）
+                if (!isExactMatchOnly) {
+                    index = headers.findIndex(h => {
+                        const th = h.trim().toLowerCase();
+                        return th.includes(cleanName);
+                    });
+                    if (index !== -1) return index;
+                }
             }
             return -1;
         }
@@ -255,18 +262,20 @@
             if (lines.length < 2) { alert("文件内容不足或表格为空"); return; }
 
             const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+            
+            // 针对单字母列（如 K, D, A），必须使用严格的完全相等或独立的词匹配，防止误伤 Damage / ADR / ID 等列
             const idx = {
                 name: findColumnIndex(headers, ['姓名', '选手', '玩家', 'Name', 'Player']),
                 agent: findColumnIndex(headers, ['英雄', '特工', 'Agent', 'Character']),
-                k: findColumnIndex(headers, ['K', '击杀', 'Kills']),
-                d: findColumnIndex(headers, ['D', '死亡', 'Deaths']),
-                a: findColumnIndex(headers, ['A', '助攻', 'Assists']),
-                acs: findColumnIndex(headers, ['ACS', '评分', '得分', 'Score']),
-                fk: findColumnIndex(headers, ['首杀', 'First Kill', 'FK', 'FirstKills'])
+                k: findColumnIndex(headers, ['k', '击杀', 'kills'], false),
+                d: findColumnIndex(headers, ['d', '死亡', 'deaths'], true), // D 必须严格完全匹配，避免匹配 Damage / ADR
+                a: findColumnIndex(headers, ['a', '助攻', 'assists'], true),  // A 必须严格完全匹配，避免匹配 ADR / ACS 等
+                acs: findColumnIndex(headers, ['acs', '评分', '得分', 'score']),
+                fk: findColumnIndex(headers, ['首杀', 'first kill', 'fk', 'firstkills'])
             };
 
             if (idx.name === -1 || idx.k === -1 || idx.d === -1) {
-                alert("错误：无法在表格中识别出「姓名/选手/玩家」、「K/击杀」或「D/死亡」列。");
+                alert(`错误：无法在表格中识别出必要的列。\n当前检测到的表头为：[${headers.join(', ')}]\n请确保包含「选手/姓名」、「K」及「D」列。`);
                 return;
             }
 
@@ -286,7 +295,10 @@
                 }
 
                 const k = parseInt(row[idx.k]) || 0;
-                const d = parseInt(row[idx.d]) || 1;
+                // 如果解析出来不对或为0，死亡数兜底设为 1，防止除以 0
+                const rawD = parseInt(row[idx.d]);
+                const d = (!isNaN(rawD) && rawD >= 0) ? rawD : 1; 
+                
                 const a = (idx.a !== -1) ? parseInt(row[idx.a]) || 0 : 0;
                 const acs = (idx.acs !== -1) ? parseInt(row[idx.acs]) || 0 : 0;
                 const fk = (idx.fk !== -1) ? parseInt(row[idx.fk]) || 0 : 0;
