@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Valorant 战队数据专业分析系统 v8.0</title>
+    <title>Valorant 战队数据专业分析系统 v10.0</title>
     <style>
         :root { --valo-red: #ff4655; --dark-bg: #0f1923; --card-bg: #1f2937; }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { background-color: var(--dark-bg); color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; }
         .container { max-width: 1100px; margin: 0 auto; }
         
-        .header-bar { background: #1f2937; border: 1px solid #374151; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px; display: flex; flex-wrap: wrap; justify-content: space-between; items-center; gap: 16px; }
+        .header-bar { background: #1f2937; border: 1px solid #374151; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; }
         .brand { display: flex; align-items: center; gap: 12px; }
         .brand-logo { background: #dc2626; padding: 8px 12px; border-radius: 8px; font-weight: 900; font-style: italic; font-size: 18px; }
         .brand-title { font-size: 20px; font-weight: 900; letter-spacing: -0.5px; }
@@ -38,13 +38,19 @@
         .stat-label { font-size: 11px; color: #9ca3af; font-weight: bold; margin-bottom: 4px; }
         .stat-val { font-size: 22px; font-weight: 900; }
         
-        .tab-bar { background: #374151; padding: 8px 20px; display: flex; justify-content: space-between; align-items: center; }
-        .toggle-btn { background: #1f2937; color: #d1d5db; border: none; padding: 6px 14px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer; }
+        .tab-bar { background: #111827; padding: 10px 20px; border-top: 1px solid #374151; display: flex; justify-content: space-between; align-items: center; }
+        .toggle-btn { background: #374151; color: #d1d5db; border: none; padding: 6px 14px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer; margin-left: 6px; }
         .toggle-btn.active { background: var(--valo-red); color: white; }
 
         table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; }
         th { color: #9ca3af; font-size: 11px; padding: 12px 16px; border-bottom: 1px solid #374151; text-transform: uppercase; }
         td { padding: 12px 16px; border-bottom: 1px solid #2d3748; }
+
+        .role-badge { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: bold; text-transform: uppercase; display: inline-block; }
+        .role-duelist { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
+        .role-initiator { background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); }
+        .role-controller { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
+        .role-sentinel { background: rgba(139, 92, 246, 0.2); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.4); }
 
         .text-green { color: #4ade80; }
         .text-red { color: #f87171; }
@@ -55,7 +61,7 @@
 </head>
 <body>
     <div class="container">
-        <!-- 头部账号管理栏 -->
+        <!-- 头部账号管理 -->
         <div class="header-bar">
             <div class="brand">
                 <div class="brand-logo">PRO</div>
@@ -73,7 +79,7 @@
             </div>
         </div>
 
-        <!-- 状态提示与上传区 -->
+        <!-- 文件导入 -->
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
             <h2 style="font-size: 20px;">选手职业档案中心</h2>
             <div id="fileInfo" style="font-size: 13px; font-weight: bold; color: #facc15; background: #111827; padding: 6px 12px; border-radius: 6px; border: 1px solid #374151;">等待导入数据...</div>
@@ -87,13 +93,43 @@
             <input type="file" id="fileInput" accept=".csv" style="display: none;" onchange="handleFileSelect(event)">
         </div>
 
-        <!-- 数据展示 -->
+        <!-- 数据面板 -->
         <div id="dashboard"></div>
         <div id="placeholder" class="placeholder">当前账号暂无选手档案，请上传 CSV 文件数据</div>
     </div>
 
     <script>
-        // 本地原生账号管理
+        // 英雄及角色定位字典（包含新特工 Veto 与 Miks）
+        const agentNameMap = {
+            'JETT': 'Jett', 'RAZE': 'Raze', 'REYNA': 'Reyna', 'SOVA': 'Sova', 'BREACH': 'Breach',
+            'OMEN': 'Omen', 'VIPER': 'Viper', 'CYPHER': 'Cypher', 'PHOENIX': 'Phoenix', 'SAGE': 'Sage',
+            'KILLJOY': 'Killjoy', 'KJ': 'Killjoy', 'SKYE': 'Skye', 'YORU': 'Yoru', 'ASTRA': 'Astra',
+            'KAY/O': 'KAY/O', 'KAYO': 'KAY/O', 'CHAMBER': 'Chamber', 'NEON': 'Neon', 'FADE': 'Fade',
+            'HARBOR': 'Harbor', 'GEKKO': 'Gekko', 'DEADLOCK': 'Deadlock', 'ISO': 'Iso', 'CLOVE': 'Clove', 
+            'VYSE': 'Vyse', 'VETO': 'Veto', 'MIKS': 'Miks',
+            '捷风': 'Jett', '雷兹': 'Raze', '芮娜': 'Reyna', '猎枭': 'Sova', '铁臂': 'Breach',
+            '幽影': 'Omen', '毒蛇': 'Viper', '零': 'Cypher', '不死鸟': 'Phoenix', '贤者': 'Sage',
+            '奇乐': 'Killjoy', '斯凯': 'Skye', '夜露': 'Yoru', '星瞾': 'Astra', '尚勃勒': 'Chamber',
+            '霓虹': 'Neon', '黑梦': 'Fade', '海神': 'Harbor', '盖可': 'Gekko', '死锁': 'Deadlock',
+            '壹决': 'Iso', '暮蝶': 'Clove', '维斯': 'Vyse'
+        };
+
+        const agentRoles = {
+            'Jett': '突击位', 'Reyna': '突击位', 'Raze': '突击位', 'Phoenix': '突击位', 'Yoru': '突击位', 'Neon': '突击位', 'Iso': '突击位',
+            'Sova': '先锋位', 'Breach': '先锋位', 'Skye': '先锋位', 'KAY/O': '先锋位', 'Fade': '先锋位', 'Gekko': '先锋位',
+            'Brimstone': '烟位', 'Omen': '烟位', 'Viper': '烟位', 'Astra': '烟位', 'Harbor': '烟位', 'Clove': '烟位', 'Miks': '烟位',
+            'Cypher': '哨位', 'Killjoy': '哨位', 'Sage': '哨位', 'Chamber': '哨位', 'Deadlock': '哨位', 'Vyse': '哨位', 'Veto': '哨位'
+        };
+
+        function getRoleBadge(role) {
+            let cls = 'role-duelist';
+            if (role === '先锋位') cls = 'role-initiator';
+            if (role === '烟位') cls = 'role-controller';
+            if (role === '哨位') cls = 'role-sentinel';
+            return `<span class="role-badge ${cls}">${role}</span>`;
+        }
+
+        // 本地账号管理
         const DEFAULT_ACC = ["默认战队分析", "一队档案", "青训档案"];
         let currentAccount = localStorage.getItem('valo_active_acc') || DEFAULT_ACC[0];
 
@@ -126,14 +162,9 @@
             }
         }
 
-        function switchAccount(val) {
-            currentAccount = val;
-            localStorage.setItem('valo_active_acc', currentAccount);
-            initUI();
-        }
-
+        function switchAccount(val) { currentAccount = val; localStorage.setItem('valo_active_acc', currentAccount); initUI(); }
         function createNewAccount() {
-            const name = prompt("请输入新新建账号/战队名称：");
+            const name = prompt("请输入新建账号/战队名称：");
             if (!name || !name.trim()) return;
             const accs = getAccounts();
             if (!accs.includes(name.trim())) {
@@ -155,37 +186,28 @@
             try { return JSON.parse(localStorage.getItem('valo_data_' + acc)); } catch(e){ return null; }
         }
 
-        // CSV 读取解析
+        // CSV 读取与解析
         function handleFileSelect(evt) {
             const file = evt.target.files[0];
             if (!file) return;
-
             document.getElementById('fileInfo').innerText = "读取中: " + file.name;
             const reader = new FileReader();
-            reader.onload = function(e) {
-                parseCSV(e.target.result, file.name);
-            };
-            reader.readAsText(file, 'GBK'); // 适配中文表格
+            reader.onload = function(e) { parseCSV(e.target.result, file.name); };
+            reader.readAsText(file, 'GBK');
         }
 
         function parseCSV(text, fileName) {
             const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
-            if (lines.length < 2) {
-                alert("CSV文件无有效数据");
-                return;
-            }
+            if (lines.length < 2) { alert("CSV文件无有效数据"); return; }
 
-            // 查找表头
             let headerIdx = 0;
             for(let i=0; i<Math.min(5, lines.length); i++) {
                 if(lines[i].includes('击杀') || lines[i].includes('选手') || lines[i].includes('K')) {
-                    headerIdx = i;
-                    break;
+                    headerIdx = i; break;
                 }
             }
 
             const headers = lines[headerIdx].split(',').map(h => h.trim().replace(/"/g, ''));
-            
             const findCol = (keys) => headers.findIndex(h => keys.some(k => h.toLowerCase().includes(k)));
 
             const nameCol = findCol(['选手', '姓名', 'id', 'player', 'name']);
@@ -193,6 +215,8 @@
             const kCol = findCol(['击杀', 'k', 'kills']);
             const dCol = findCol(['死亡', 'd', 'deaths']);
             const aCol = findCol(['助攻', 'a', 'assists']);
+            const acsCol = findCol(['acs', '评分', '得分']);
+            const fkCol = findCol(['首杀', 'fk', 'firstkill']);
 
             if (nameCol === -1 || kCol === -1 || dCol === -1) {
                 alert(`未找到必要的列！找到的列: [${headers.join(', ')}]\n请确保有【选手】、【击杀】、【死亡】列。`);
@@ -209,16 +233,32 @@
                 const k = parseInt(cols[kCol]) || 0;
                 const d = parseInt(cols[dCol]) || 0;
                 const a = aCol !== -1 ? (parseInt(cols[aCol]) || 0) : 0;
-                const agent = agentCol !== -1 && cols[agentCol] ? cols[agentCol] : 'Jett';
+                const acs = acsCol !== -1 ? (parseInt(cols[acsCol]) || 0) : 0;
+                const fk = fkCol !== -1 ? (parseInt(cols[fkCol]) || 0) : 0;
+
+                const rawAgent = agentCol !== -1 && cols[agentCol] ? cols[agentCol] : 'Jett';
+                const cleanAgent = rawAgent.toUpperCase().trim();
+                const agent = agentNameMap[cleanAgent] || rawAgent;
+                const role = agentRoles[agent] || '突击位';
 
                 if (!playersMap[name]) {
-                    playersMap[name] = { matches: [], totalK: 0, totalD: 0, totalA: 0 };
+                    playersMap[name] = { matches: [], agentsMap: {}, totalK: 0, totalD: 0, totalA: 0, totalAcs: 0, totalFk: 0 };
                 }
 
-                playersMap[name].matches.push({ id: playersMap[name].matches.length + 1, agent, k, d, a, pm: k - d });
+                playersMap[name].matches.push({ id: playersMap[name].matches.length + 1, agent, role, k, d, a, acs, fk, pm: k - d });
+                
+                // 聚合英雄数据
+                if (!playersMap[name].agentsMap[agent]) {
+                    playersMap[name].agentsMap[agent] = { agent, role, count: 0, k: 0, d: 0, a: 0, acs: 0, fk: 0 };
+                }
+                const ag = playersMap[name].agentsMap[agent];
+                ag.count++; ag.k += k; ag.d += d; ag.a += a; ag.acs += acs; ag.fk += fk;
+
                 playersMap[name].totalK += k;
                 playersMap[name].totalD += d;
                 playersMap[name].totalA += a;
+                playersMap[name].totalAcs += acs;
+                playersMap[name].totalFk += fk;
             }
 
             saveData(currentAccount, playersMap);
@@ -234,7 +274,9 @@
             Object.keys(playersMap).forEach((name, idx) => {
                 const p = playersMap[name];
                 const kd = (p.totalK / (p.totalD || 1)).toFixed(2);
+                const avgAcs = Math.round(p.totalAcs / p.matches.length);
                 const pm = p.totalK - p.totalD;
+                const agents = Object.values(p.agentsMap || {}).sort((a,b) => b.count - a.count);
 
                 html += `
                 <div class="player-card">
@@ -256,31 +298,62 @@
                                 <div class="stat-val ${pm >= 0 ? 'text-green' : 'text-red'}">${pm > 0 ? '+' + pm : pm}</div>
                             </div>
                             <div>
-                                <div class="stat-label">总击杀</div>
-                                <div class="stat-val text-yellow">${p.totalK}</div>
+                                <div class="stat-label">平均 ACS</div>
+                                <div class="stat-val text-yellow">${avgAcs > 0 ? avgAcs : '-'}</div>
                             </div>
                             <div>
-                                <div class="stat-label">总死亡</div>
-                                <div class="stat-val text-blue">${p.totalD}</div>
+                                <div class="stat-label">总首杀 (FK)</div>
+                                <div class="stat-val text-blue">${p.totalFk || 0}</div>
                             </div>
                         </div>
                     </div>
+
                     <div class="tab-bar">
-                        <span style="font-size: 12px; font-weight: bold; color: #9ca3af;">战绩列表</span>
+                        <span style="font-size: 12px; font-weight: bold; color: #9ca3af;">📊 详细战绩视图</span>
+                        <div>
+                            <button class="toggle-btn active" id="btn-agg-${idx}" onclick="switchView(${idx}, 'agg')">英雄数据总览</button>
+                            <button class="toggle-btn" id="btn-match-${idx}" onclick="switchView(${idx}, 'match')">单局历史记录 (${p.matches.length})</button>
+                        </div>
                     </div>
-                    <div style="padding: 16px;">
+
+                    <!-- 视图 1：英雄总览 -->
+                    <div id="view-agg-${idx}" style="padding: 16px;">
                         <table>
                             <thead>
-                                <tr><th>场次</th><th>使用英雄</th><th>K / D / A</th><th>K/D</th><th>+/-</th></tr>
+                                <tr><th>特工/英雄</th><th>定位</th><th>使用场次</th><th>K / D / A</th><th>K/D</th><th>平均 ACS</th><th>首杀</th></tr>
+                            </thead>
+                            <tbody>
+                                ${agents.map(ag => `
+                                    <tr>
+                                        <td><b>${ag.agent}</b></td>
+                                        <td>${getRoleBadge(ag.role)}</td>
+                                        <td>${ag.count} 场</td>
+                                        <td>${ag.k} / ${ag.d} / ${ag.a}</td>
+                                        <td class="${(ag.k/(ag.d||1))>=1 ? 'text-green':'text-red'}"><b>${(ag.k/(ag.d||1)).toFixed(2)}</b></td>
+                                        <td class="text-yellow"><b>${Math.round(ag.acs/ag.count) || '-'}</b></td>
+                                        <td class="text-blue">${ag.fk}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- 视图 2：单局历史 -->
+                    <div id="view-match-${idx}" style="padding: 16px; display: none;">
+                        <table>
+                            <thead>
+                                <tr><th>场次</th><th>英雄角色</th><th>定位</th><th>K / D / A</th><th>K/D</th><th>ACS</th><th>首杀</th></tr>
                             </thead>
                             <tbody>
                                 ${p.matches.map(m => `
                                     <tr>
                                         <td>#${m.id}</td>
                                         <td><b>${m.agent}</b></td>
+                                        <td>${getRoleBadge(m.role)}</td>
                                         <td>${m.k} / ${m.d} / ${m.a}</td>
                                         <td class="${(m.k/(m.d||1))>=1 ? 'text-green':'text-red'}"><b>${(m.k/(m.d||1)).toFixed(2)}</b></td>
-                                        <td class="${m.pm>=0 ? 'text-green':'text-red'}">${m.pm>0?'+'+m.pm:m.pm}</td>
+                                        <td class="text-yellow">${m.acs || '-'}</td>
+                                        <td class="text-blue">${m.fk || 0}</td>
                                     </tr>
                                 `).join('')}
                             </tbody>
@@ -292,7 +365,25 @@
             db.innerHTML = html;
         }
 
-        // 初始化
+        function switchView(idx, type) {
+            const aggView = document.getElementById(`view-agg-${idx}`);
+            const matchView = document.getElementById(`view-match-${idx}`);
+            const aggBtn = document.getElementById(`btn-agg-${idx}`);
+            const matchBtn = document.getElementById(`btn-match-${idx}`);
+
+            if (type === 'agg') {
+                aggView.style.display = 'block';
+                matchView.style.display = 'none';
+                aggBtn.classList.add('active');
+                matchBtn.classList.remove('active');
+            } else {
+                aggView.style.display = 'none';
+                matchView.style.display = 'block';
+                aggBtn.classList.remove('active');
+                matchBtn.classList.add('active');
+            }
+        }
+
         window.onload = initUI;
     </script>
 </body>
