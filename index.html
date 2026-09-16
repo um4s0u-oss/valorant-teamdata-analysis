@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Valorant 战队数据专业分析系统 v23.0 (职业级赛训专家版)</title>
+    <title>Valorant 战队数据专业分析系统 v24.0 (全数据完美呈现版)</title>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
         :root { --valo-red: #ff4655; --dark-bg: #0f1923; --card-bg: #1f2937; }
@@ -46,9 +46,9 @@
         .toggle-btn { background: #374151; color: #d1d5db; border: none; padding: 6px 14px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer; margin-left: 6px; }
         .toggle-btn.active { background: var(--valo-red); color: white; }
 
-        table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; }
-        th { color: #9ca3af; font-size: 11px; padding: 12px 16px; border-bottom: 1px solid #374151; text-transform: uppercase; }
-        td { padding: 12px 16px; border-bottom: 1px solid #2d3748; }
+        table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
+        th { color: #9ca3af; font-size: 11px; padding: 12px 12px; border-bottom: 1px solid #374151; text-transform: uppercase; }
+        td { padding: 12px 12px; border-bottom: 1px solid #2d3748; }
 
         .advice-box { background: #0b131b; border-top: 2px solid #374151; padding: 20px; }
         .advice-header { font-size: 15px; font-weight: 900; color: #facc15; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -58,7 +58,7 @@
         .advice-card-title { font-size: 12px; font-weight: bold; color: #9ca3af; margin-bottom: 8px; text-transform: uppercase; display: flex; justify-content: space-between; }
         .advice-card-body { font-size: 13px; color: #e5e7eb; line-height: 1.6; }
         
-        .tag-pill { display: inline-block; background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); padding: 1px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+        .tag-pill { display: inline-block; background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; }
         .tag-pill.green { background: rgba(74, 222, 128, 0.2); color: #4ade80; border-color: rgba(74, 222, 128, 0.4); }
         .tag-pill.yellow { background: rgba(250, 204, 21, 0.2); color: #facc15; border-color: rgba(250, 204, 21, 0.4); }
         .tag-pill.blue { background: rgba(96, 165, 250, 0.2); color: #60a5fa; border-color: rgba(96, 165, 250, 0.4); }
@@ -105,7 +105,7 @@
         <div id="dropZone" class="drop-zone" onclick="document.getElementById('fileInput').click()">
             <div style="font-size: 36px; margin-bottom: 8px;">🧠</div>
             <h3 style="font-size: 17px; margin-bottom: 4px;">点击或拖入任意 Excel 战绩表格 (.xlsx/.xls/.csv)</h3>
-            <p style="color: #9ca3af; font-size: 13px; margin-bottom: 12px;">完美兼容 DTG、HTG 及全球各平台表格，提供号角/VLR级深度赛训对位诊断</p>
+            <p style="color: #9ca3af; font-size: 13px; margin-bottom: 12px;">完美兼容 DTG、HTG 及全球各平台表格，提供专家级赛训对位诊断</p>
             <button class="btn-valo">选择表格文件</button>
             <input type="file" id="fileInput" accept=".xlsx, .xls, .csv" style="display: none;" onchange="handleFileSelect(event)">
         </div>
@@ -243,12 +243,12 @@
             if (file) processFile(file);
         }
 
-        // 🛡️ 完美的通用万能解析引擎（精准捕获 DTG 与 HTG 的 K, D, A, ACS, FK, FD 及比赛结果状态）
+        // 🛡️ 完美精确解析引擎（精准对齐 K, D, A, ACS, KD, +/-, 首杀 及 比赛结果/状态）
         function absoluteSafeParse(rows) {
             if (!rows || !Array.isArray(rows) || rows.length < 2) return null;
 
             let headerIdx = -1;
-            let nameCol = 4, agentCol = 5, acsCol = 6, kCol = 7, dCol = 8, aCol = 9, fkCol = 12, resultCol = 2;
+            let nameCol = 4, agentCol = 5, acsCol = 6, kCol = 7, dCol = 8, aCol = 9, kdCol = 10, pmCol = 11, fkCol = 12, resultCol = 2;
 
             for (let i = 0; i < Math.min(15, rows.length); i++) {
                 const row = rows[i];
@@ -263,6 +263,8 @@
                         if (val === 'k' || val.includes('击杀')) kCol = idx;
                         if (val === 'd' || val.includes('死亡')) dCol = idx;
                         if (val === 'a' || val.includes('助攻')) aCol = idx;
+                        if (val === 'kd' || val === 'k/d') kdCol = idx;
+                        if (val === '+/-' || val === 'pm') pmCol = idx;
                         if (val.includes('acs')) acsCol = idx;
                         if (val.includes('首杀')) fkCol = idx;
                         if (val.includes('结果') || val.includes('胜败')) resultCol = idx;
@@ -288,8 +290,11 @@
                 const a = aCol !== -1 && cols[aCol] !== undefined ? (parseInt(cols[aCol]) || 0) : 0;
                 const acs = acsCol !== -1 && cols[acsCol] !== undefined ? (parseFloat(cols[acsCol]) || 0) : 0;
                 const fk = fkCol !== -1 && cols[fkCol] !== undefined ? (parseInt(cols[fkCol]) || 0) : 0;
+                
+                const pm = pmCol !== -1 && cols[pmCol] !== undefined ? (parseInt(cols[pmCol]) || (k - d)) : (k - d);
+
                 let matchResult = resultCol !== -1 && cols[resultCol] !== undefined ? String(cols[resultCol]).trim() : '对局';
-                if (!matchResult || matchResult === 'undefined' || matchResult === 'NaN') matchResult = '对局完成';
+                if (!matchResult || matchResult === 'undefined' || matchResult === 'NaN' || matchResult === '') matchResult = '完成';
 
                 const rawAgent = agentCol !== -1 && cols[agentCol] ? String(cols[agentCol]).trim() : 'Jett';
                 const cleanAgent = rawAgent.toUpperCase().trim();
@@ -303,7 +308,7 @@
                 playersMap[name].matches.push({ 
                     id: playersMap[name].matches.length + 1, 
                     agent, role, k, d, a, acs, fk, 
-                    pm: k - d, 
+                    pm: pm, 
                     result: matchResult 
                 });
                 
@@ -383,7 +388,7 @@
             }
         }
 
-        // 🧠 职业级赛训专家诊断算法（参考 VLR.gg / 战绩网 / 号角职业标准）
+        // 🧠 职业级赛训专家诊断算法（参考 VLR.gg / 号角职业标准）
         function generateAdvancedDiagnostics(p) {
             const matches = p.matches || [];
             if (matches.length === 0) return { positionRec: "缺乏足够数据", agentDiff: "无", fkfdAdvice: "无" };
@@ -406,7 +411,6 @@
                 const kd = r.d > 0 ? (r.k / r.d) : r.k;
                 const avgFk = r.count ? (r.fk / r.count) : 0;
                 
-                // 职业级综合效率得分模型
                 const score = avgAcs * Math.sqrt(Math.max(0.5, kd)) * (1 + 0.15 * avgFk);
                 r.score = score;
                 r.kd = kd.toFixed(2);
@@ -417,7 +421,6 @@
 
             roleAnalysisList.sort((a,b) => b.score - a.score);
 
-            // A. 主/副定位与多位置综合推荐
             let positionRec = "";
             if (roleAnalysisList.length === 1) {
                 const r = roleAnalysisList[0];
@@ -428,7 +431,6 @@
                 positionRec = `<b>综合推荐主打</b> <span class="tag-pill green">${top1.role}</span> (表现最优，ACS: ${top1.avgAcs}, KD: ${top1.kd})；<b>推荐副选</b> <span class="tag-pill blue">${top2.role}</span> (ACS: ${top2.avgAcs})。两位置结合可提供极佳的战术阵型容错率。`;
             }
 
-            // B. 同定位不同英雄横向深度对比
             let agentDiff = "";
             let agentsArray = Object.values(agentStats);
             let sameRoleGroups = {};
@@ -457,7 +459,6 @@
 
             agentDiff = diffNotes.length > 0 ? diffNotes.join('<br>') : `主力英雄为 <span class="text-yellow">${agentsArray[0]?.agent || 'Jett'}</span>。`;
 
-            // C. 打法激进 vs 保守 & 首杀首死/对位风格诊断
             let fkfdAdvice = "";
             const totalFk = p.totalFk || 0;
             const avgFkVal = (totalFk / matches.length).toFixed(1);
@@ -571,7 +572,7 @@
                         </table>
                     </div>
 
-                    <!-- 视图 2：单局历史 (完美显示 K/D/A 与状态) -->
+                    <!-- 视图 2：单局历史 (严格包含: 英雄角色, ACS, K, D, A, K/D, +/-, 首杀, 定位, 对局状态) -->
                     <div id="view-match-${idx}" style="padding: 16px; display: none;">
                         <table>
                             <thead>
@@ -579,24 +580,35 @@
                                     <th>场次</th>
                                     <th>英雄角色</th>
                                     <th>定位</th>
-                                    <th>击杀 / 死亡 / 助攻</th>
-                                    <th>K/D</th>
                                     <th>ACS</th>
+                                    <th>K</th>
+                                    <th>D</th>
+                                    <th>A</th>
+                                    <th>K/D</th>
+                                    <th>+/-</th>
+                                    <th>首杀</th>
                                     <th>对局状态</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                ${p.matches.map(m => `
+                                ${p.matches.map(m => {
+                                    const mKd = (m.k / (m.d || 1)).toFixed(2);
+                                    return `
                                     <tr>
                                         <td>#${m.id}</td>
                                         <td><b>${m.agent}</b></td>
                                         <td>${getRoleBadge(m.role)}</td>
-                                        <td>${m.k} / ${m.d} / ${m.a}</td>
-                                        <td class="${(m.k/(m.d||1))>=1 ? 'text-green':'text-red'}"><b>${(m.k/(m.d||1)).toFixed(2)}</b></td>
-                                        <td class="text-yellow">${m.acs || '-'}</td>
+                                        <td class="text-yellow"><b>${m.acs || '-'}</b></td>
+                                        <td>${m.k}</td>
+                                        <td>${m.d}</td>
+                                        <td>${m.a}</td>
+                                        <td class="${m.k >= m.d ? 'text-green':'text-red'}"><b>${mKd}</b></td>
+                                        <td class="${m.pm >= 0 ? 'text-green':'text-red'}">${m.pm > 0 ? '+' + m.pm : m.pm}</td>
+                                        <td class="text-blue"><b>${m.fk || 0}</b></td>
                                         <td><span class="tag-pill yellow">${m.result}</span></td>
                                     </tr>
-                                `).join('')}
+                                    `;
+                                }).join('')}
                             </tbody>
                         </table>
                     </div>
