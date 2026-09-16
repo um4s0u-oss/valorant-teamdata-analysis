@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Valorant 战队数据专业分析系统 v4.0</title>
+    <title>Valorant 战队数据专业分析系统 v4.1</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         :root { --valo-red: #ff4655; --dark-bg: #0f1923; }
@@ -28,7 +28,7 @@
         <div class="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
             <div>
                 <h1 class="text-4xl font-black italic tracking-tighter text-white">PRO <span class="text-red-500">ANALYTICS</span></h1>
-                <p class="text-gray-400 text-sm mt-1">v4.0 动态英雄池展开/收起 + 深度多维度战术评语</p>
+                <p class="text-gray-400 text-sm mt-1">v4.1 智能表头兼容 + 修复首杀数据完整统计</p>
             </div>
             <div id="fileInfo" class="text-sm font-mono text-gray-500">等待导入数据...</div>
         </div>
@@ -41,7 +41,7 @@
             <label for="fileInput" class="btn-valo">选择电脑上的文件</label>
             <input type="file" id="fileInput" accept=".csv" class="hidden">
             <div class="mt-6 text-xs text-gray-500">
-                支持字段：姓名, 英雄, K, D, A, ACS, 首杀
+                支持兼容表头：姓名/选手/玩家，英雄，K/击杀，D/死亡，A/助攻，ACS/评分，首杀/First Kill/FK
             </div>
         </div>
 
@@ -55,22 +55,18 @@
     </div>
 
     <script>
-        // 更新后的 Valorant 英雄定位字典库（已加入 Veto 哨位、Miks 烟位、Waylay 突击位，移除通用位）
+        // Valorant 英雄定位字典库
         const agentRoles = {
-            // 突击位 (Duelist)
             'Jett': '突击位', 'Reyna': '突击位', 'Raze': '突击位', 'Phoenix': '突击位', 'Yoru': '突击位', 'Neon': '突击位', 'Iso': '突击位', 'Waylay': '突击位',
-            // 先锋位 (Initiator)
             'Sova': '先锋位', 'Breach': '先锋位', 'Skye': '先锋位', 'KAY/O': '先锋位', 'Fade': '先锋位', 'Gekko': '先锋位', 'Tejo': '先锋位',
-            // 控场/烟位 (Controller)
             'Brimstone': '烟位', 'Omen': '烟位', 'Viper': '烟位', 'Astra': '烟位', 'Harbor': '烟位', 'Clove': '烟位', 'Miks': '烟位',
-            // 哨位 (Sentinel)
             'Cypher': '哨位', 'Killjoy': '哨位', 'Sage': '哨位', 'Chamber': '哨位', 'Deadlock': '哨位', 'Vyse': '哨位', 'Veto': '哨位'
         };
 
         function getAgentRole(agentName) {
             if (!agentName) return '突击位';
             const cleanName = agentName.trim();
-            return agentRoles[cleanName] || '突击位'; // 如果没匹配到默认归为突击位，不显示“通用位”
+            return agentRoles[cleanName] || '突击位';
         }
 
         function getRoleBadgeClass(role) {
@@ -89,7 +85,6 @@
         const placeholder = document.getElementById('placeholder');
         const fileInfo = document.getElementById('fileInfo');
 
-        // 拖拽与点击事件绑定
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
             window.addEventListener(eventName, e => { e.preventDefault(); e.stopPropagation(); }, false);
         });
@@ -119,28 +114,40 @@
             };
         }
 
+        // 智能表头匹配函数（支持别名）
+        function findColumnIndex(headers, possibleNames) {
+            for (let name of possibleNames) {
+                const index = headers.findIndex(h => h.toLowerCase() === name.toLowerCase() || h.includes(name));
+                if (index !== -1) return index;
+            }
+            return -1;
+        }
+
         function parseCSV(text) {
             const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
             if (lines.length < 2) { alert("文件内容不足"); return; }
 
             const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+            
+            // 建立多维别名映射，完美兼容各种常见写法
             const idx = {
-                name: headers.indexOf('姓名'),
-                agent: headers.indexOf('英雄'),
-                k: headers.indexOf('K'),
-                d: headers.indexOf('D'),
-                a: headers.indexOf('A'),
-                acs: headers.indexOf('ACS'),
-                fk: headers.indexOf('首杀')
+                name: findColumnIndex(headers, ['姓名', '选手', '玩家', 'Name', 'Player']),
+                agent: findColumnIndex(headers, ['英雄', '特工', 'Agent', 'Character']),
+                k: findColumnIndex(headers, ['K', '击杀', 'Kills']),
+                d: findColumnIndex(headers, ['D', '死亡', 'Deaths']),
+                a: findColumnIndex(headers, ['A', '助攻', 'Assists']),
+                acs: findColumnIndex(headers, ['ACS', '评分', '得分', 'Score']),
+                fk: findColumnIndex(headers, ['首杀', 'First Kill', 'FK', 'FirstKills'])
             };
 
+            // 基础校验：名字、击杀、死亡为必须字段
             if (idx.name === -1 || idx.k === -1 || idx.d === -1) {
-                alert("错误：CSV 文件必须包含「姓名」、「K」、「D」三列。");
+                alert("错误：无法在 CSV 中识别出「姓名/选手/玩家」、「K/击杀」或「D/死亡」列，请检查表头。");
                 return;
             }
 
             const playersMap = {};
-            lines.slice(1).forEach((line, index) => {
+            lines.slice(1).forEach(line => {
                 const row = line.split(',').map(v => v.trim().replace(/"/g, ''));
                 const name = row[idx.name];
                 if (!name) return;
@@ -161,7 +168,7 @@
                 const agentName = (idx.agent !== -1 && row[idx.agent]) ? row[idx.agent] : 'Jett';
                 const role = getAgentRole(agentName);
 
-                // 记录单场明细（带有场次序号）
+                // 记录单局明细
                 playersMap[name].matches.push({ 
                     matchId: playersMap[name].matches.length + 1,
                     agent: agentName, 
@@ -194,14 +201,12 @@
             const matchCount = p.matches.length;
             const avgFk = (p.totalFk / matchCount).toFixed(1);
             
-            // 找出出场最多的英雄
             const sortedAgents = Object.values(p.agentsMap).sort((a, b) => b.count - a.count);
             const mainAgent = sortedAgents[0] ? sortedAgents[0].agent : '综合英雄';
             const mainRole = sortedAgents[0] ? sortedAgents[0].role : '核心定位';
 
             let analysis = `【综合复盘】该选手本阶段共计登场 ${matchCount} 场，主要司职主打英雄为 <span class="text-white font-bold">${mainAgent}</span>（定位：${mainRole}）。`;
 
-            // 火力与ACS评定
             if (avgAcs >= 230) {
                 analysis += `其 ACS 维持在极高的火力水准（平均 ${avgAcs}），具备极强的地图资源争夺能力与个人能力输出。`;
             } else if (avgAcs >= 180) {
@@ -210,7 +215,6 @@
                 analysis += `近期 ACS 偏低（平均 ${avgAcs}），在进攻端的正面突破或防守端的道具铺垫上存在断层。`;
             }
 
-            // 对枪与K/D评定
             if (avgKd >= 1.25) {
                 analysis += `对枪压制力极强（综合 K/D 高达 ${avgKd}，净胜分 +${totalPM}），单兵作战能力优异。`;
             } else if (avgKd >= 1.0) {
@@ -219,14 +223,12 @@
                 analysis += `近期交火胜率不足（综合 K/D ${avgKd}，净胜分 ${totalPM}），对枪易陷入劣势。`;
             }
 
-            // 首杀与风格评估
             if (p.totalFk > 0) {
-                analysis += `首杀贡献稳定（场均首杀约 ${avgFk} 次），具备一定的主动开团或前压撕扯防线能力。`;
+                analysis += `首杀贡献稳定（总首杀 ${p.totalFk} 次，场均约 ${avgFk} 次），具备主动开团或前压撕扯防线能力。`;
             } else {
                 analysis += `首杀数据相对保守，偏向于稳健架枪或防守反击打法。`;
             }
 
-            // 赛训改进建议
             analysis += `<br><span class="text-red-400 font-bold">🎯 教练改进建议：</span>`;
             if (avgKd < 1.0) {
                 analysis += `需重点复盘其对枪身位与残局处理细节，优化交战前的拉枪线时机，减少不必要的初段白给。`;
@@ -287,12 +289,12 @@
                             </div>
                             <div>
                                 <p class="text-[10px] text-gray-500 uppercase font-bold mb-1">Total FK</p>
-                                <p class="text-2xl font-black text-blue-400">${p.totalFk > 0 ? p.totalFk : '-'}</p>
+                                <p class="text-2xl font-black text-blue-400">${p.totalFk}</p>
                             </div>
                         </div>
                     </div>
 
-                    <!-- 切换按钮栏：选择 英雄整体表现 vs 单局详细数据 -->
+                    <!-- 切换按钮栏 -->
                     <div class="px-6 py-3 bg-gray-800/80 border-b border-gray-700 flex justify-between items-center">
                         <span class="text-xs font-bold text-gray-400 uppercase tracking-widest">📋 战绩表现视图切换</span>
                         <div class="flex gap-2">
@@ -301,7 +303,7 @@
                         </div>
                     </div>
 
-                    <!-- 视图容器 A：英雄整体表现聚合表 -->
+                    <!-- 视图 A：英雄整体表现聚合表 -->
                     <div id="view-aggregated-${index}" class="p-6 bg-gray-800/40 border-b border-gray-800">
                         <div class="overflow-x-auto">
                             <table class="w-full text-sm text-left">
@@ -338,7 +340,7 @@
                         </div>
                     </div>
 
-                    <!-- 视图容器 B：全部单局战绩明细表 -->
+                    <!-- 视图 B：全部单局战绩明细表 -->
                     <div id="view-matches-${index}" class="p-6 bg-gray-800/40 border-b border-gray-800 hidden">
                         <div class="overflow-x-auto">
                             <table class="w-full text-sm text-left">
@@ -366,7 +368,7 @@
                                             <td class="py-3 font-bold ${m.kd >= 1 ? 'text-green-400' : 'text-red-500'}">${m.kd}</td>
                                             <td class="py-3 font-mono ${m.pm >= 0 ? 'text-green-400' : 'text-red-500'}">${m.pm > 0 ? '+' : ''}${m.pm}</td>
                                             <td class="py-3 font-mono text-yellow-500">${m.acs > 0 ? m.acs : '-'}</td>
-                                            <td class="py-3 font-bold text-blue-400">${m.fk > 0 ? m.fk : '-'}</td>
+                                            <td class="py-3 font-bold text-blue-400">${m.fk}</td>
                                         </tr>
                                         `;
                                     }).join('')}
@@ -375,7 +377,7 @@
                         </div>
                     </div>
 
-                    <!-- 底部：深度多维赛训分析评语 -->
+                    <!-- 底部：专业赛训分析评语 -->
                     <div class="p-6 bg-gray-900/90 border-t border-gray-800 text-sm text-gray-300 leading-relaxed flex items-start gap-3">
                         <span class="text-2xl">💡</span>
                         <div>
@@ -389,17 +391,14 @@
             dashboard.innerHTML = html;
         }
 
-        // 切换视图函数
         function switchView(playerIndex, viewType, btnElement) {
             const card = document.getElementById(`player-card-${playerIndex}`);
             const aggView = document.getElementById(`view-aggregated-${playerIndex}`);
             const matchView = document.getElementById(`view-matches-${playerIndex}`);
             
-            // 切换按钮高亮
             card.querySelectorAll('.toggle-btn').forEach(btn => btn.classList.remove('active'));
             btnElement.classList.add('active');
 
-            // 切换表格显示
             if (viewType === 'aggregated') {
                 aggView.classList.remove('hidden');
                 matchView.classList.add('hidden');
