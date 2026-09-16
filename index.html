@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Valorant 战队数据专业分析系统 v10.0</title>
+    <title>Valorant 战队数据专业分析系统 v11.0</title>
     <style>
         :root { --valo-red: #ff4655; --dark-bg: #0f1923; --card-bg: #1f2937; }
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -45,6 +45,12 @@
         table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; }
         th { color: #9ca3af; font-size: 11px; padding: 12px 16px; border-bottom: 1px solid #374151; text-transform: uppercase; }
         td { padding: 12px 16px; border-bottom: 1px solid #2d3748; }
+
+        /* 评价与优化建议模块样式 */
+        .advice-box { background: #111827; border-top: 1px solid #374151; padding: 16px 20px; }
+        .advice-title { font-size: 13px; font-weight: bold; color: #facc15; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+        .advice-content { font-size: 13px; color: #d1d5db; line-height: 1.6; }
+        .advice-tag { display: inline-block; background: rgba(250, 204, 21, 0.15); color: #facc15; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; margin-right: 6px; }
 
         .role-badge { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: bold; text-transform: uppercase; display: inline-block; }
         .role-duelist { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
@@ -99,7 +105,7 @@
     </div>
 
     <script>
-        // 英雄及角色定位字典（包含新特工 Veto 与 Miks）
+        // 英雄及角色定位字典
         const agentNameMap = {
             'JETT': 'Jett', 'RAZE': 'Raze', 'REYNA': 'Reyna', 'SOVA': 'Sova', 'BREACH': 'Breach',
             'OMEN': 'Omen', 'VIPER': 'Viper', 'CYPHER': 'Cypher', 'PHOENIX': 'Phoenix', 'SAGE': 'Sage',
@@ -186,7 +192,7 @@
             try { return JSON.parse(localStorage.getItem('valo_data_' + acc)); } catch(e){ return null; }
         }
 
-        // CSV 读取与解析
+        // 核心 CSV 解析逻辑（精细区分 ACS 与 助攻 A）
         function handleFileSelect(evt) {
             const file = evt.target.files[0];
             if (!file) return;
@@ -208,18 +214,18 @@
             }
 
             const headers = lines[headerIdx].split(',').map(h => h.trim().replace(/"/g, ''));
-            const findCol = (keys) => headers.findIndex(h => keys.some(k => h.toLowerCase().includes(k)));
-
-            const nameCol = findCol(['选手', '姓名', 'id', 'player', 'name']);
-            const agentCol = findCol(['英雄', '角色', '特工', 'agent']);
-            const kCol = findCol(['击杀', 'k', 'kills']);
-            const dCol = findCol(['死亡', 'd', 'deaths']);
-            const aCol = findCol(['助攻', 'a', 'assists']);
-            const acsCol = findCol(['acs', '评分', '得分']);
-            const fkCol = findCol(['首杀', 'fk', 'firstkill']);
+            
+            // 严格对齐列名
+            const nameCol = headers.findIndex(h => ['选手', '姓名', 'id', 'player', 'name'].some(k => h.toLowerCase() === k || h.toLowerCase().includes(k)));
+            const agentCol = headers.findIndex(h => ['英雄', '角色', '特工', 'agent'].some(k => h.toLowerCase().includes(k)));
+            const kCol = headers.findIndex(h => ['击杀', 'kills'].some(k => h.toLowerCase().includes(k)) || h.toUpperCase() === 'K');
+            const dCol = headers.findIndex(h => ['死亡', 'deaths'].some(k => h.toLowerCase().includes(k)) || h.toUpperCase() === 'D');
+            const aCol = headers.findIndex(h => ['助攻', 'assists', '助攻数'].some(k => h.toLowerCase().includes(k)) || h.toUpperCase() === 'A');
+            const acsCol = headers.findIndex(h => ['acs', '战斗均分', '评分', '得分'].some(k => h.toLowerCase().includes(k)));
+            const fkCol = headers.findIndex(h => ['首杀', 'fk', 'firstkill'].some(k => h.toLowerCase().includes(k)));
 
             if (nameCol === -1 || kCol === -1 || dCol === -1) {
-                alert(`未找到必要的列！找到的列: [${headers.join(', ')}]\n请确保有【选手】、【击杀】、【死亡】列。`);
+                alert(`未找到必要的列！找到的列: [${headers.join(', ')}]\n请确保包含【选手】、【击杀】、【死亡】列。`);
                 return;
             }
 
@@ -247,12 +253,17 @@
 
                 playersMap[name].matches.push({ id: playersMap[name].matches.length + 1, agent, role, k, d, a, acs, fk, pm: k - d });
                 
-                // 聚合英雄数据
+                // 英雄数据汇总逻辑
                 if (!playersMap[name].agentsMap[agent]) {
                     playersMap[name].agentsMap[agent] = { agent, role, count: 0, k: 0, d: 0, a: 0, acs: 0, fk: 0 };
                 }
                 const ag = playersMap[name].agentsMap[agent];
-                ag.count++; ag.k += k; ag.d += d; ag.a += a; ag.acs += acs; ag.fk += fk;
+                ag.count += 1;
+                ag.k += k;
+                ag.d += d;
+                ag.a += a;
+                ag.acs += acs;
+                ag.fk += fk;
 
                 playersMap[name].totalK += k;
                 playersMap[name].totalD += d;
@@ -266,6 +277,29 @@
             document.getElementById('fileInfo').innerText = "导入成功: " + fileName + " ✅";
         }
 
+        // 选手战术分析与优化建议算法
+        function generatePlayerAdvice(kd, avgAcs, avgFk, totalMatches) {
+            let evaluation = "";
+            let advice = "";
+
+            if (kd >= 1.25 && avgAcs >= 230) {
+                evaluation = "团队的核心输出基石，具备极强的终结比赛与对枪优势能力，局内威胁极高。";
+                advice = "建议在队伍战术中给予其更多一抗一的拉扯空间，同时注意残局保枪与过分深进的风险防范。";
+            } else if (kd >= 1.0) {
+                evaluation = "表现稳健的战术执行者，能够稳定完成战场兑换并为队伍提供持续的输出与技能支持。";
+                advice = "可适当提高首杀拉扯参与度，在优势局中加强枪法施压，进一步提升平均 ACS 收益。";
+            } else {
+                evaluation = "战术功能型定位明显，对枪正面收益偏低，目前在交火兑换中处于相对劣势。";
+                advice = "建议强化技能搭配协同，减少单干对枪；优化预判拉枪线逻辑，优先以补枪与协同协助队友。";
+            }
+
+            if (avgFk >= 2.5) {
+                advice += " 【破点能力强】首杀表现突出，建议继续作为入场第一枪线。";
+            }
+
+            return { evaluation, advice };
+        }
+
         function render(playersMap) {
             document.getElementById('placeholder').style.display = 'none';
             const db = document.getElementById('dashboard');
@@ -273,10 +307,14 @@
 
             Object.keys(playersMap).forEach((name, idx) => {
                 const p = playersMap[name];
+                const matchCount = p.matches.length || 1;
                 const kd = (p.totalK / (p.totalD || 1)).toFixed(2);
-                const avgAcs = Math.round(p.totalAcs / p.matches.length);
+                const avgAcs = Math.round(p.totalAcs / matchCount);
+                const avgFk = (p.totalFk / matchCount).toFixed(1);
                 const pm = p.totalK - p.totalD;
                 const agents = Object.values(p.agentsMap || {}).sort((a,b) => b.count - a.count);
+
+                const { evaluation, advice } = generatePlayerAdvice(parseFloat(kd), avgAcs, parseFloat(avgFk), matchCount);
 
                 html += `
                 <div class="player-card">
@@ -285,7 +323,7 @@
                             <div class="avatar">${name[0].toUpperCase()}</div>
                             <div>
                                 <h2 style="font-size: 22px;">${name}</h2>
-                                <div style="font-size: 12px; color: #9ca3af;">历史场次: ${p.matches.length} 场</div>
+                                <div style="font-size: 12px; color: #9ca3af;">历史场次: ${matchCount} 场</div>
                             </div>
                         </div>
                         <div class="stats-grid">
@@ -302,8 +340,8 @@
                                 <div class="stat-val text-yellow">${avgAcs > 0 ? avgAcs : '-'}</div>
                             </div>
                             <div>
-                                <div class="stat-label">总首杀 (FK)</div>
-                                <div class="stat-val text-blue">${p.totalFk || 0}</div>
+                                <div class="stat-label">场均首杀</div>
+                                <div class="stat-val text-blue">${avgFk}</div>
                             </div>
                         </div>
                     </div>
@@ -320,7 +358,15 @@
                     <div id="view-agg-${idx}" style="padding: 16px;">
                         <table>
                             <thead>
-                                <tr><th>特工/英雄</th><th>定位</th><th>使用场次</th><th>K / D / A</th><th>K/D</th><th>平均 ACS</th><th>首杀</th></tr>
+                                <tr>
+                                    <th>特工/英雄</th>
+                                    <th>定位</th>
+                                    <th>使用场次</th>
+                                    <th>K / D / A(助攻)</th>
+                                    <th>K/D</th>
+                                    <th>平均 ACS</th>
+                                    <th>首杀</th>
+                                </tr>
                             </thead>
                             <tbody>
                                 ${agents.map(ag => `
@@ -330,7 +376,7 @@
                                         <td>${ag.count} 场</td>
                                         <td>${ag.k} / ${ag.d} / ${ag.a}</td>
                                         <td class="${(ag.k/(ag.d||1))>=1 ? 'text-green':'text-red'}"><b>${(ag.k/(ag.d||1)).toFixed(2)}</b></td>
-                                        <td class="text-yellow"><b>${Math.round(ag.acs/ag.count) || '-'}</b></td>
+                                        <td class="text-yellow"><b>${ag.count ? Math.round(ag.acs / ag.count) : '-'}</b></td>
                                         <td class="text-blue">${ag.fk}</td>
                                     </tr>
                                 `).join('')}
@@ -342,7 +388,15 @@
                     <div id="view-match-${idx}" style="padding: 16px; display: none;">
                         <table>
                             <thead>
-                                <tr><th>场次</th><th>英雄角色</th><th>定位</th><th>K / D / A</th><th>K/D</th><th>ACS</th><th>首杀</th></tr>
+                                <tr>
+                                    <th>场次</th>
+                                    <th>英雄角色</th>
+                                    <th>定位</th>
+                                    <th>K / D / A(助攻)</th>
+                                    <th>K/D</th>
+                                    <th>ACS</th>
+                                    <th>首杀</th>
+                                </tr>
                             </thead>
                             <tbody>
                                 ${p.matches.map(m => `
@@ -358,6 +412,15 @@
                                 `).join('')}
                             </tbody>
                         </table>
+                    </div>
+
+                    <!-- 选手评价与优化调整建议 -->
+                    <div class="advice-box">
+                        <div class="advice-title">💡 选手综合评价与优化建议</div>
+                        <div class="advice-content">
+                            <p><span class="advice-tag">综合评价</span>${evaluation}</p>
+                            <p style="margin-top: 4px;"><span class="advice-tag">赛训建议</span>${advice}</p>
+                        </div>
                     </div>
                 </div>
                 `;
