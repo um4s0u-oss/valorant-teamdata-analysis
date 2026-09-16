@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Valorant 战队数据专业分析系统 v11.0</title>
+    <title>Valorant 战队数据专业分析系统 v12.0</title>
     <style>
         :root { --valo-red: #ff4655; --dark-bg: #0f1923; --card-bg: #1f2937; }
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -46,7 +46,6 @@
         th { color: #9ca3af; font-size: 11px; padding: 12px 16px; border-bottom: 1px solid #374151; text-transform: uppercase; }
         td { padding: 12px 16px; border-bottom: 1px solid #2d3748; }
 
-        /* 评价与优化建议模块样式 */
         .advice-box { background: #111827; border-top: 1px solid #374151; padding: 16px 20px; }
         .advice-title { font-size: 13px; font-weight: bold; color: #facc15; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
         .advice-content { font-size: 13px; color: #d1d5db; line-height: 1.6; }
@@ -105,7 +104,6 @@
     </div>
 
     <script>
-        // 英雄及角色定位字典
         const agentNameMap = {
             'JETT': 'Jett', 'RAZE': 'Raze', 'REYNA': 'Reyna', 'SOVA': 'Sova', 'BREACH': 'Breach',
             'OMEN': 'Omen', 'VIPER': 'Viper', 'CYPHER': 'Cypher', 'PHOENIX': 'Phoenix', 'SAGE': 'Sage',
@@ -135,7 +133,6 @@
             return `<span class="role-badge ${cls}">${role}</span>`;
         }
 
-        // 本地账号管理
         const DEFAULT_ACC = ["默认战队分析", "一队档案", "青训档案"];
         let currentAccount = localStorage.getItem('valo_active_acc') || DEFAULT_ACC[0];
 
@@ -192,7 +189,6 @@
             try { return JSON.parse(localStorage.getItem('valo_data_' + acc)); } catch(e){ return null; }
         }
 
-        // 核心 CSV 解析逻辑（精细区分 ACS 与 助攻 A）
         function handleFileSelect(evt) {
             const file = evt.target.files[0];
             if (!file) return;
@@ -202,6 +198,7 @@
             reader.readAsText(file, 'GBK');
         }
 
+        // 严密防错的表头查找逻辑
         function parseCSV(text, fileName) {
             const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
             if (lines.length < 2) { alert("CSV文件无有效数据"); return; }
@@ -214,22 +211,34 @@
             }
 
             const headers = lines[headerIdx].split(',').map(h => h.trim().replace(/"/g, ''));
+
+            // 使用准确匹配规则：彻底防范 ACS 抢占 助攻/A
+            const findExactCol = (candidates) => {
+                return headers.findIndex(h => {
+                    const cleanH = h.trim().toLowerCase();
+                    return candidates.some(c => cleanH === c.toLowerCase());
+                });
+            };
+
+            const nameCol = findExactCol(['选手', '姓名', 'id', 'player', 'name']);
+            const agentCol = findExactCol(['角色', '英雄', '特工', 'agent']);
+            const kCol = findExactCol(['击杀', 'k', 'kills']);
+            const dCol = findExactCol(['死亡', 'd', 'deaths']);
             
-            // 严格对齐列名
-            const nameCol = headers.findIndex(h => ['选手', '姓名', 'id', 'player', 'name'].some(k => h.toLowerCase() === k || h.toLowerCase().includes(k)));
-            const agentCol = headers.findIndex(h => ['英雄', '角色', '特工', 'agent'].some(k => h.toLowerCase().includes(k)));
-            const kCol = headers.findIndex(h => ['击杀', 'kills'].some(k => h.toLowerCase().includes(k)) || h.toUpperCase() === 'K');
-            const dCol = headers.findIndex(h => ['死亡', 'deaths'].some(k => h.toLowerCase().includes(k)) || h.toUpperCase() === 'D');
-            const aCol = headers.findIndex(h => ['助攻', 'assists', '助攻数'].some(k => h.toLowerCase().includes(k)) || h.toUpperCase() === 'A');
-            const acsCol = headers.findIndex(h => ['acs', '战斗均分', '评分', '得分'].some(k => h.toLowerCase().includes(k)));
-            const fkCol = headers.findIndex(h => ['首杀', 'fk', 'firstkill'].some(k => h.toLowerCase().includes(k)));
+            // 助攻 (A) 专有匹配
+            let aCol = findExactCol(['助攻', 'a', 'assists']);
+            
+            // ACS 专有匹配
+            let acsCol = findExactCol(['acs', '战斗均分', '评分', '得分']);
+
+            const fkCol = findExactCol(['首杀', 'fk', 'firstkill']);
 
             if (nameCol === -1 || kCol === -1 || dCol === -1) {
                 alert(`未找到必要的列！找到的列: [${headers.join(', ')}]\n请确保包含【选手】、【击杀】、【死亡】列。`);
                 return;
             }
 
-            let playersMap = loadData(currentAccount) || {};
+            let playersMap = {}; // 重新解析以确保覆盖准确
 
             for (let i = headerIdx + 1; i < lines.length; i++) {
                 const cols = lines[i].split(',').map(c => c.trim().replace(/"/g, ''));
@@ -253,7 +262,6 @@
 
                 playersMap[name].matches.push({ id: playersMap[name].matches.length + 1, agent, role, k, d, a, acs, fk, pm: k - d });
                 
-                // 英雄数据汇总逻辑
                 if (!playersMap[name].agentsMap[agent]) {
                     playersMap[name].agentsMap[agent] = { agent, role, count: 0, k: 0, d: 0, a: 0, acs: 0, fk: 0 };
                 }
@@ -277,24 +285,23 @@
             document.getElementById('fileInfo').innerText = "导入成功: " + fileName + " ✅";
         }
 
-        // 选手战术分析与优化建议算法
-        function generatePlayerAdvice(kd, avgAcs, avgFk, totalMatches) {
+        function generatePlayerAdvice(kd, avgAcs, avgFk) {
             let evaluation = "";
             let advice = "";
 
             if (kd >= 1.25 && avgAcs >= 230) {
-                evaluation = "团队的核心输出基石，具备极强的终结比赛与对枪优势能力，局内威胁极高。";
-                advice = "建议在队伍战术中给予其更多一抗一的拉扯空间，同时注意残局保枪与过分深进的风险防范。";
+                evaluation = "战队绝对核心输出点，对枪杀伤力极高，能有效帮助队伍撕开突破口。";
+                advice = "战术上可优先为其设计第一突击枪线，并安排队友跟进拉扯保护残局。";
             } else if (kd >= 1.0) {
-                evaluation = "表现稳健的战术执行者，能够稳定完成战场兑换并为队伍提供持续的输出与技能支持。";
-                advice = "可适当提高首杀拉扯参与度，在优势局中加强枪法施压，进一步提升平均 ACS 收益。";
+                evaluation = "中规中矩的团队基石，发挥稳定，对枪兑换率合格。";
+                advice = "建议强化技能协同拉扯，进一步提升第一波火力跟进速度。";
             } else {
-                evaluation = "战术功能型定位明显，对枪正面收益偏低，目前在交火兑换中处于相对劣势。";
-                advice = "建议强化技能搭配协同，减少单干对枪；优化预判拉枪线逻辑，优先以补枪与协同协助队友。";
+                evaluation = "正面拉枪对战压力较大，局内击杀兑换率偏低。";
+                advice = "建议减少第一出头位迎战，多以技能协助队友为主，在补枪定位中寻找输出机会。";
             }
 
-            if (avgFk >= 2.5) {
-                advice += " 【破点能力强】首杀表现突出，建议继续作为入场第一枪线。";
+            if (avgFk >= 2.0) {
+                advice += " 并且拥有优秀的破点首杀意识。";
             }
 
             return { evaluation, advice };
@@ -314,7 +321,7 @@
                 const pm = p.totalK - p.totalD;
                 const agents = Object.values(p.agentsMap || {}).sort((a,b) => b.count - a.count);
 
-                const { evaluation, advice } = generatePlayerAdvice(parseFloat(kd), avgAcs, parseFloat(avgFk), matchCount);
+                const { evaluation, advice } = generatePlayerAdvice(parseFloat(kd), avgAcs, parseFloat(avgFk));
 
                 html += `
                 <div class="player-card">
@@ -362,7 +369,7 @@
                                     <th>特工/英雄</th>
                                     <th>定位</th>
                                     <th>使用场次</th>
-                                    <th>K / D / A(助攻)</th>
+                                    <th>击杀 / 死亡 / 助攻</th>
                                     <th>K/D</th>
                                     <th>平均 ACS</th>
                                     <th>首杀</th>
@@ -392,7 +399,7 @@
                                     <th>场次</th>
                                     <th>英雄角色</th>
                                     <th>定位</th>
-                                    <th>K / D / A(助攻)</th>
+                                    <th>击杀 / 死亡 / 助攻</th>
                                     <th>K/D</th>
                                     <th>ACS</th>
                                     <th>首杀</th>
