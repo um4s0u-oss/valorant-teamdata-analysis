@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Valorant 战队数据专业分析系统 v3.0</title>
+    <title>Valorant 战队数据专业分析系统 v4.0</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         :root { --valo-red: #ff4655; --dark-bg: #0f1923; }
@@ -18,6 +18,8 @@
         .role-initiator { background-color: #3b82f633; color: #60a5fa; border: 1px solid #3b82f655; }
         .role-controller { background-color: #10b98133; color: #34d399; border: 1px solid #10b98155; }
         .role-sentinel { background-color: #8b5cf633; color: #a78bfa; border: 1px solid #8b5cf655; }
+        .toggle-btn { background: #374151; color: #d1d5db; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer; transition: all 0.2s; }
+        .toggle-btn.active { background: var(--valo-red); color: white; }
     </style>
 </head>
 <body class="p-4 md:p-10">
@@ -26,7 +28,7 @@
         <div class="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
             <div>
                 <h1 class="text-4xl font-black italic tracking-tighter text-white">PRO <span class="text-red-500">ANALYTICS</span></h1>
-                <p class="text-gray-400 text-sm mt-1">英雄分类归纳 + 智能赛训简评</p>
+                <p class="text-gray-400 text-sm mt-1">v4.0 动态英雄池展开/收起 + 深度多维度战术评语</p>
             </div>
             <div id="fileInfo" class="text-sm font-mono text-gray-500">等待导入数据...</div>
         </div>
@@ -52,25 +54,24 @@
         </div>
     </div>
 
-<script>
-        // Valorant 英雄定位字典库
+    <script>
+        // 更新后的 Valorant 英雄定位字典库（已加入 Veto 哨位、Miks 烟位、Waylay 突击位，移除通用位）
         const agentRoles = {
             // 突击位 (Duelist)
-            'Jett': '突击位', 'Reyna': '突击位', 'Raze': '突击位', 'Phoenix': '突击位', 'Yoru': '突击位', 'Neon': '突击位', 'Iso': '突击位', 
+            'Jett': '突击位', 'Reyna': '突击位', 'Raze': '突击位', 'Phoenix': '突击位', 'Yoru': '突击位', 'Neon': '突击位', 'Iso': '突击位', 'Waylay': '突击位',
             // 先锋位 (Initiator)
             'Sova': '先锋位', 'Breach': '先锋位', 'Skye': '先锋位', 'KAY/O': '先锋位', 'Fade': '先锋位', 'Gekko': '先锋位', 'Tejo': '先锋位',
             // 控场/烟位 (Controller)
-            'Brimstone': '烟位', 'Omen': '烟位', 'Viper': '烟位', 'Astra': '烟位', 'Harbor': '烟位', 'Clove': '烟位','Miks': '烟位',
+            'Brimstone': '烟位', 'Omen': '烟位', 'Viper': '烟位', 'Astra': '烟位', 'Harbor': '烟位', 'Clove': '烟位', 'Miks': '烟位',
             // 哨位 (Sentinel)
-            'Cypher': '哨位', 'Killjoy': '哨位', 'Sage': '哨位', 'Chamber': '哨位', 'Deadlock': '哨位', 'Vyse': '哨位','Veto': '哨位',
+            'Cypher': '哨位', 'Killjoy': '哨位', 'Sage': '哨位', 'Chamber': '哨位', 'Deadlock': '哨位', 'Vyse': '哨位', 'Veto': '哨位'
         };
 
         function getAgentRole(agentName) {
-            if (!agentName) return '未知位';
+            if (!agentName) return '突击位';
             const cleanName = agentName.trim();
-            return agentRoles[cleanName] || '通用位';
+            return agentRoles[cleanName] || '突击位'; // 如果没匹配到默认归为突击位，不显示“通用位”
         }
-
 
         function getRoleBadgeClass(role) {
             switch(role) {
@@ -78,7 +79,7 @@
                 case '先锋位': return 'role-initiator';
                 case '烟位': return 'role-controller';
                 case '哨位': return 'role-sentinel';
-                default: return 'bg-gray-700 text-gray-300';
+                default: return 'role-duelist';
             }
         }
 
@@ -139,7 +140,7 @@
             }
 
             const playersMap = {};
-            lines.slice(1).forEach(line => {
+            lines.slice(1).forEach((line, index) => {
                 const row = line.split(',').map(v => v.trim().replace(/"/g, ''));
                 const name = row[idx.name];
                 if (!name) return;
@@ -147,7 +148,7 @@
                 if (!playersMap[name]) {
                     playersMap[name] = { 
                         matches: [], 
-                        agentsMap: {}, // 用于按英雄聚合
+                        agentsMap: {}, 
                         totalK: 0, totalD: 0, totalA: 0, totalAcs: 0, totalFk: 0 
                     };
                 }
@@ -157,11 +158,18 @@
                 const a = (idx.a !== -1) ? parseInt(row[idx.a]) || 0 : 0;
                 const acs = (idx.acs !== -1) ? parseInt(row[idx.acs]) || 0 : 0;
                 const fk = (idx.fk !== -1) ? parseInt(row[idx.fk]) || 0 : 0;
-                const agentName = (idx.agent !== -1 && row[idx.agent]) ? row[idx.agent] : '未知英雄';
+                const agentName = (idx.agent !== -1 && row[idx.agent]) ? row[idx.agent] : 'Jett';
                 const role = getAgentRole(agentName);
 
-                // 记录单场明细
-                playersMap[name].matches.push({ agent: agentName, role, k, d, a, acs, fk, kd: (k/d).toFixed(2), pm: k - d });
+                // 记录单场明细（带有场次序号）
+                playersMap[name].matches.push({ 
+                    matchId: playersMap[name].matches.length + 1,
+                    agent: agentName, 
+                    role, 
+                    k, d, a, acs, fk, 
+                    kd: (k/d).toFixed(2), 
+                    pm: k - d 
+                });
 
                 // 按英雄聚合统计
                 if (!playersMap[name].agentsMap[agentName]) {
@@ -181,19 +189,54 @@
             render(playersMap);
         }
 
-        // 生成约100字的赛训分析
-        function generateAIComment(p, avgKd, avgAcs, totalPM) {
-            let roleSummary = Object.values(p.agentsMap).map(ag => `${ag.agent}(${ag.role})`).join('、');
-            let comment = `【赛训综合评估】该选手共登场 ${p.matches.length} 场，核心英雄池涵盖：${roleSummary}。`;
+        // 深度多维赛训评价生成函数
+        function generateAdvancedComment(p, avgKd, avgAcs, totalPM) {
+            const matchCount = p.matches.length;
+            const avgFk = (p.totalFk / matchCount).toFixed(1);
             
-            if (avgKd >= 1.2 && totalPM > 0) {
-                comment += `整体对枪压制力极强（综合 K/D 达 ${avgKd}，净胜分 +${totalPM}），ACS 表现亮眼。建议继续巩固当前定位，在战术中给予更多资源倾斜，担当队伍的绝对突破或核心火力点。`;
-            } else if (avgKd >= 1.0) {
-                comment += `整体竞技状态稳定（综合 K/D ${avgKd}），能够很好地完成本职战术任务。建议在后续训练中重点提升残局处理的细节和首杀转化率，进一步扩大对局优势。`;
+            // 找出出场最多的英雄
+            const sortedAgents = Object.values(p.agentsMap).sort((a, b) => b.count - a.count);
+            const mainAgent = sortedAgents[0] ? sortedAgents[0].agent : '综合英雄';
+            const mainRole = sortedAgents[0] ? sortedAgents[0].role : '核心定位';
+
+            let analysis = `【综合复盘】该选手本阶段共计登场 ${matchCount} 场，主要司职主打英雄为 <span class="text-white font-bold">${mainAgent}</span>（定位：${mainRole}）。`;
+
+            // 火力与ACS评定
+            if (avgAcs >= 230) {
+                analysis += `其 ACS 维持在极高的火力水准（平均 ${avgAcs}），具备极强的地图资源争夺能力与个人能力输出。`;
+            } else if (avgAcs >= 180) {
+                analysis += `其 ACS 表现达到联赛标准（平均 ${avgAcs}），战术职责履行到位，能够稳定提供持续火力。`;
             } else {
-                comment += `近期对枪表现略显挣扎（综合 K/D ${avgKd}，净胜分 ${totalPM}），生存率偏低。建议复盘对枪身位与补枪协同，适当优化交战时机，或针对性调整其使用的英雄定位。`;
+                analysis += `近期 ACS 偏低（平均 ${avgAcs}），在进攻端的正面突破或防守端的道具铺垫上存在断层。`;
             }
-            return comment;
+
+            // 对枪与K/D评定
+            if (avgKd >= 1.25) {
+                analysis += `对枪压制力极强（综合 K/D 高达 ${avgKd}，净胜分 +${totalPM}），单兵作战能力优异。`;
+            } else if (avgKd >= 1.0) {
+                analysis += `对枪效率保持在健康区间（综合 K/D ${avgKd}），失误较少，抗压能力合格。`;
+            } else {
+                analysis += `近期交火胜率不足（综合 K/D ${avgKd}，净胜分 ${totalPM}），对枪易陷入劣势。`;
+            }
+
+            // 首杀与风格评估
+            if (p.totalFk > 0) {
+                analysis += `首杀贡献稳定（场均首杀约 ${avgFk} 次），具备一定的主动开团或前压撕扯防线能力。`;
+            } else {
+                analysis += `首杀数据相对保守，偏向于稳健架枪或防守反击打法。`;
+            }
+
+            // 赛训改进建议
+            analysis += `<br><span class="text-red-400 font-bold">🎯 教练改进建议：</span>`;
+            if (avgKd < 1.0) {
+                analysis += `需重点复盘其对枪身位与残局处理细节，优化交战前的拉枪线时机，减少不必要的初段白给。`;
+            } else if (avgAcs < 190) {
+                analysis += `建议在战术体系中赋予其更多主动交战或配合队友拿信息的机会，提升整体经济局与长枪局的伤害转换率。`;
+            } else {
+                analysis += `当前竞技状态火热，建议在后续地图池扩充中继续深耕当前英雄池，并着重提升残局时的多杀转化率与团队指挥联动。`;
+            }
+
+            return analysis;
         }
 
         function render(playersMap) {
@@ -206,22 +249,21 @@
                 return (playersMap[b].totalK/playersMap[b].totalD) - (playersMap[a].totalK/playersMap[a].totalD);
             });
 
-            sortedNames.forEach(name => {
+            sortedNames.forEach((name, index) => {
                 const p = playersMap[name];
                 const avgKd = (p.totalK / p.totalD).toFixed(2);
                 const avgAcs = Math.round(p.totalAcs / p.matches.length);
                 const totalPM = p.totalK - p.totalD;
 
-                // 将该选手玩过的英雄按场次或表现排序
                 const aggregatedAgents = Object.values(p.agentsMap).sort((a, b) => (b.k/b.d) - (a.k/a.d));
-                const aiComment = generateAIComment(p, avgKd, avgAcs, totalPM);
+                const aiComment = generateAdvancedComment(p, avgKd, avgAcs, totalPM);
 
                 html += `
-                <div class="player-card rounded-xl shadow-lg overflow-hidden mb-8">
+                <div class="player-card rounded-xl shadow-lg overflow-hidden mb-8" id="player-card-${index}">
                     <!-- 顶层汇总 -->
                     <div class="bg-gray-900 p-6 flex flex-col lg:flex-row justify-between items-center gap-6">
                         <div class="flex items-center gap-6">
-                            <div class="h-16 w-16 bg-red-600 rounded-full flex items-center justify-center text-2xl font-black italic">
+                            <div class="h-16 w-16 bg-red-600 rounded-full flex items-center justify-center text-2xl font-black italic shadow-inner">
                                 ${name[0].toUpperCase()}
                             </div>
                             <div>
@@ -250,9 +292,17 @@
                         </div>
                     </div>
 
-                    <!-- 中间：英雄分类汇总表（将同一英雄聚合，并标明定位） -->
-                    <div class="p-6 bg-gray-800/40 border-b border-gray-800">
-                        <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">🎮 英雄定位与池分布聚合</h3>
+                    <!-- 切换按钮栏：选择 英雄整体表现 vs 单局详细数据 -->
+                    <div class="px-6 py-3 bg-gray-800/80 border-b border-gray-700 flex justify-between items-center">
+                        <span class="text-xs font-bold text-gray-400 uppercase tracking-widest">📋 战绩表现视图切换</span>
+                        <div class="flex gap-2">
+                            <button class="toggle-btn active" onclick="switchView('${index}', 'aggregated', this)">英雄整体表现汇总</button>
+                            <button class="toggle-btn" onclick="switchView('${index}', 'matches', this)">全部单局战绩明细 (${p.matches.length}场)</button>
+                        </div>
+                    </div>
+
+                    <!-- 视图容器 A：英雄整体表现聚合表 -->
+                    <div id="view-aggregated-${index}" class="p-6 bg-gray-800/40 border-b border-gray-800">
                         <div class="overflow-x-auto">
                             <table class="w-full text-sm text-left">
                                 <thead class="text-gray-500 uppercase text-[10px] tracking-widest border-b border-gray-700">
@@ -273,9 +323,7 @@
                                         const roleClass = getRoleBadgeClass(ag.role);
                                         return `
                                         <tr>
-                                            <td class="py-3 font-bold text-white flex items-center gap-2">
-                                                ${ag.agent}
-                                            </td>
+                                            <td class="py-3 font-bold text-white">${ag.agent}</td>
                                             <td class="py-3"><span class="role-badge ${roleClass}">${ag.role}</span></td>
                                             <td class="py-3 font-mono text-gray-400">${ag.count} 场</td>
                                             <td class="py-3 font-mono text-gray-300">${ag.k} / ${ag.d} / ${ag.a}</td>
@@ -290,18 +338,75 @@
                         </div>
                     </div>
 
-                    <!-- 底部：约100字的AI分析评语 -->
-                    <div class="p-6 bg-gray-900/80 border-t border-gray-800 text-sm text-gray-300 leading-relaxed flex items-start gap-3">
-                        <span class="text-xl">💡</span>
+                    <!-- 视图容器 B：全部单局战绩明细表 -->
+                    <div id="view-matches-${index}" class="p-6 bg-gray-800/40 border-b border-gray-800 hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm text-left">
+                                <thead class="text-gray-500 uppercase text-[10px] tracking-widest border-b border-gray-700">
+                                    <tr>
+                                        <th class="pb-3">场次 Match</th>
+                                        <th class="pb-3">英雄 Agent</th>
+                                        <th class="pb-3">定位 Role</th>
+                                        <th class="pb-3">K / D / A</th>
+                                        <th class="pb-3">K/D 比值</th>
+                                        <th class="pb-3">净胜分 +/-</th>
+                                        <th class="pb-3">ACS</th>
+                                        <th class="pb-3">首杀 FK</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-800/60">
+                                    ${p.matches.map(m => {
+                                        const roleClass = getRoleBadgeClass(m.role);
+                                        return `
+                                        <tr>
+                                            <td class="py-3 font-mono text-gray-400">#${m.matchId}</td>
+                                            <td class="py-3 font-bold text-white">${m.agent}</td>
+                                            <td class="py-3"><span class="role-badge ${roleClass}">${m.role}</span></td>
+                                            <td class="py-3 font-mono text-gray-300">${m.k} / ${m.d} / ${m.a}</td>
+                                            <td class="py-3 font-bold ${m.kd >= 1 ? 'text-green-400' : 'text-red-500'}">${m.kd}</td>
+                                            <td class="py-3 font-mono ${m.pm >= 0 ? 'text-green-400' : 'text-red-500'}">${m.pm > 0 ? '+' : ''}${m.pm}</td>
+                                            <td class="py-3 font-mono text-yellow-500">${m.acs > 0 ? m.acs : '-'}</td>
+                                            <td class="py-3 font-bold text-blue-400">${m.fk > 0 ? m.fk : '-'}</td>
+                                        </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 底部：深度多维赛训分析评语 -->
+                    <div class="p-6 bg-gray-900/90 border-t border-gray-800 text-sm text-gray-300 leading-relaxed flex items-start gap-3">
+                        <span class="text-2xl">💡</span>
                         <div>
-                            <span class="font-bold text-red-400 mr-2">教练分析报告：</span>
-                            ${aiComment}
+                            <span class="font-bold text-red-400 block mb-1">专业赛训教练复盘报告：</span>
+                            <div class="space-y-1">${aiComment}</div>
                         </div>
                     </div>
                 </div>
                 `;
             });
             dashboard.innerHTML = html;
+        }
+
+        // 切换视图函数
+        function switchView(playerIndex, viewType, btnElement) {
+            const card = document.getElementById(`player-card-${playerIndex}`);
+            const aggView = document.getElementById(`view-aggregated-${playerIndex}`);
+            const matchView = document.getElementById(`view-matches-${playerIndex}`);
+            
+            // 切换按钮高亮
+            card.querySelectorAll('.toggle-btn').forEach(btn => btn.classList.remove('active'));
+            btnElement.classList.add('active');
+
+            // 切换表格显示
+            if (viewType === 'aggregated') {
+                aggView.classList.remove('hidden');
+                matchView.classList.add('hidden');
+            } else {
+                aggView.classList.add('hidden');
+                matchView.classList.remove('hidden');
+            }
         }
     </script>
 </body>
