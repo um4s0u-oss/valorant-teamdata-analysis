@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Valorant 战队数据专业分析系统 v17.0</title>
-    <!-- 引入官方 SheetJS 库 -->
+    <title>Valorant 战队数据专业分析系统 v18.0</title>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
         :root { --valo-red: #ff4655; --dark-bg: #0f1923; --card-bg: #1f2937; }
@@ -51,10 +50,19 @@
         th { color: #9ca3af; font-size: 11px; padding: 12px 16px; border-bottom: 1px solid #374151; text-transform: uppercase; }
         td { padding: 12px 16px; border-bottom: 1px solid #2d3748; }
 
-        .advice-box { background: #111827; border-top: 1px solid #374151; padding: 16px 20px; }
-        .advice-title { font-size: 13px; font-weight: bold; color: #facc15; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
-        .advice-content { font-size: 13px; color: #d1d5db; line-height: 1.6; }
-        .advice-tag { display: inline-block; background: rgba(250, 204, 21, 0.15); color: #facc15; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; margin-right: 6px; }
+        /* 深度赛训分析模块样式 */
+        .advice-box { background: #0b131b; border-top: 2px solid #374151; padding: 20px; }
+        .advice-header { font-size: 15px; font-weight: 900; color: #facc15; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .advice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 12px; }
+        @media (max-width: 768px) { .advice-grid { grid-template-columns: 1fr; } }
+        .advice-card { background: #17212b; border: 1px solid #2d3748; border-radius: 8px; padding: 14px; }
+        .advice-card-title { font-size: 12px; font-weight: bold; color: #9ca3af; margin-bottom: 6px; text-transform: uppercase; display: flex; justify-content: space-between; }
+        .advice-card-body { font-size: 13px; color: #e5e7eb; line-height: 1.6; }
+        
+        .tag-pill { display: inline-block; background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); padding: 1px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+        .tag-pill.green { background: rgba(74, 222, 128, 0.2); color: #4ade80; border-color: rgba(74, 222, 128, 0.4); }
+        .tag-pill.yellow { background: rgba(250, 204, 21, 0.2); color: #facc15; border-color: rgba(250, 204, 21, 0.4); }
+        .tag-pill.blue { background: rgba(96, 165, 250, 0.2); color: #60a5fa; border-color: rgba(96, 165, 250, 0.4); }
 
         .role-badge { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: bold; text-transform: uppercase; display: inline-block; }
         .role-duelist { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
@@ -89,9 +97,8 @@
             </div>
         </div>
 
-        <!-- 文件导入说明 -->
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-            <h2 style="font-size: 20px;">选手职业档案中心</h2>
+            <h2 style="font-size: 20px;">选手职业档案与智能赛训诊断中心</h2>
             <div id="fileInfo" style="font-size: 13px; font-weight: bold; color: #facc15; background: #111827; padding: 6px 12px; border-radius: 6px; border: 1px solid #374151;">等待导入数据...</div>
         </div>
 
@@ -99,7 +106,7 @@
         <div id="dropZone" class="drop-zone" onclick="document.getElementById('fileInput').click()">
             <div style="font-size: 36px; margin-bottom: 8px;">📊</div>
             <h3 style="font-size: 17px; margin-bottom: 4px;">点击或拖入 Excel (.xlsx/.xls) 文件</h3>
-            <p style="color: #9ca3af; font-size: 13px; margin-bottom: 12px;">智能识别并持久化存储战绩下拉工作表</p>
+            <p style="color: #9ca3af; font-size: 13px; margin-bottom: 12px;">自动计算主副定位归属、英雄差异对比与首杀/首死打法建议</p>
             <button class="btn-valo">选择表格文件</button>
             <input type="file" id="fileInput" accept=".xlsx, .xls, .csv" style="display: none;" onchange="handleFileSelect(event)">
         </div>
@@ -113,7 +120,6 @@
             <select id="sheetSelect" onchange="onSheetDropdownChange(this.value)" style="min-width: 240px; font-weight: bold; border-color: var(--valo-red);"></select>
         </div>
 
-        <!-- 数据面板 -->
         <div id="dashboard"></div>
         <div id="placeholder" class="placeholder">当前账号暂无选手档案，请上传 Excel 或 CSV 数据文件</div>
     </div>
@@ -150,7 +156,7 @@
 
         const DEFAULT_ACC = ["默认战队分析", "一队档案", "二队档案", "试训档案"];
         let currentAccount = localStorage.getItem('valo_active_acc') || DEFAULT_ACC[0];
-        let processedSheetsStore = {}; // 存储轻量化解析后的各 Sheet 战绩数据对象
+        let processedSheetsStore = {};
 
         function getAccounts() {
             try {
@@ -171,7 +177,6 @@
 
             setupDragAndDrop();
 
-            // 恢复轻量级多 Sheet 数据缓存
             const cachedSheetsData = localStorage.getItem('valo_processed_sheets_' + currentAccount);
             const activeSheetName = localStorage.getItem('valo_active_sheet_' + currentAccount);
 
@@ -279,18 +284,17 @@
                         });
 
                         if (matchSheets.length > 0) {
-                            // 将轻量级数据保存至 localStorage
                             try {
                                 localStorage.setItem('valo_processed_sheets_' + currentAccount, JSON.stringify(processedSheetsStore));
                             } catch (e) {
-                                console.warn("存储空间超出 limit", e);
+                                console.warn("存储空间限制", e);
                             }
                             
                             const defaultSheet = matchSheets[0];
                             localStorage.setItem('valo_active_sheet_' + currentAccount, defaultSheet);
                             renderSheetBar(matchSheets, defaultSheet);
                             render(processedSheetsStore[defaultSheet]);
-                            document.getElementById('fileInfo').innerText = "已成功加载并持久化战绩表 ✅";
+                            document.getElementById('fileInfo').innerText = "解析并持久化战绩成功 ✅";
                         } else {
                             alert("未在文件内扫描到包含【击杀】与【选手】的战绩表格。");
                         }
@@ -328,7 +332,6 @@
             }
         }
 
-        // 从原始二维数组提取并聚合选手战绩
         function extractPlayersMapFromRows(rows) {
             let headerIdx = -1;
             for (let i = 0; i < Math.min(10, rows.length); i++) {
@@ -357,6 +360,7 @@
             const aCol = findExactCol(['助攻', 'a', 'assists']);
             const acsCol = findExactCol(['acs', '战斗均分', '评分', '得分']);
             const fkCol = findExactCol(['首杀', 'fk', 'firstkill']);
+            const fdCol = findExactCol(['首死', 'fd', 'firstdeath']); // 读取首死
 
             if (nameCol === -1 || kCol === -1 || dCol === -1) return null;
 
@@ -374,6 +378,7 @@
                 const a = aCol !== -1 ? (parseInt(cols[aCol]) || 0) : 0;
                 const acs = acsCol !== -1 ? (parseInt(cols[acsCol]) || 0) : 0;
                 const fk = fkCol !== -1 ? (parseInt(cols[fkCol]) || 0) : 0;
+                const fd = fdCol !== -1 ? (parseInt(cols[fdCol]) || 0) : 0;
 
                 const rawAgent = agentCol !== -1 && cols[agentCol] ? String(cols[agentCol]).trim() : 'Jett';
                 const cleanAgent = rawAgent.toUpperCase().trim();
@@ -381,13 +386,13 @@
                 const role = agentRoles[agent] || '突击位';
 
                 if (!playersMap[name]) {
-                    playersMap[name] = { matches: [], agentsMap: {}, totalK: 0, totalD: 0, totalA: 0, totalAcs: 0, totalFk: 0 };
+                    playersMap[name] = { matches: [], agentsMap: {}, totalK: 0, totalD: 0, totalA: 0, totalAcs: 0, totalFk: 0, totalFd: 0 };
                 }
 
-                playersMap[name].matches.push({ id: playersMap[name].matches.length + 1, agent, role, k, d, a, acs, fk, pm: k - d });
+                playersMap[name].matches.push({ id: playersMap[name].matches.length + 1, agent, role, k, d, a, acs, fk, fd, pm: k - d });
                 
                 if (!playersMap[name].agentsMap[agent]) {
-                    playersMap[name].agentsMap[agent] = { agent, role, count: 0, k: 0, d: 0, a: 0, acs: 0, fk: 0 };
+                    playersMap[name].agentsMap[agent] = { agent, role, count: 0, k: 0, d: 0, a: 0, acs: 0, fk: 0, fd: 0 };
                 }
                 const ag = playersMap[name].agentsMap[agent];
                 ag.count += 1;
@@ -396,37 +401,144 @@
                 ag.a += a;
                 ag.acs += acs;
                 ag.fk += fk;
+                ag.fd += fd;
 
                 playersMap[name].totalK += k;
                 playersMap[name].totalD += d;
                 playersMap[name].totalA += a;
                 playersMap[name].totalAcs += acs;
                 playersMap[name].totalFk += fk;
+                playersMap[name].totalFd += fd;
             }
 
             return playersMap;
         }
 
-        function generatePlayerAdvice(kd, avgAcs, avgFk) {
-            let evaluation = "";
-            let advice = "";
+        // 🧠 深度智能诊断算法（结合多位置、同位置英雄对比、首杀/首死比例）
+        function generateAdvancedDiagnostics(p) {
+            const matches = p.matches || [];
+            if (matches.length === 0) return { positionRec: "缺乏足够数据", agentDiff: "无", fkfdAdvice: "无" };
 
-            if (kd >= 1.25 && avgAcs >= 230) {
-                evaluation = "战队绝对核心输出点，正面撕扯能力强，正面对枪杀伤力极高。";
-                advice = "建议团队优先配置掩护拉扯资源，保持高效的破点优势。";
-            } else if (kd >= 1.0) {
-                evaluation = "中规中矩的战队基石，输出对枪稳定，具备合格的兑换承伤能力。";
-                advice = "建议强化与队友的技能拉扯协同，提高探点跟进效率。";
+            // 1. 按位置 (Role) 进行聚合统计
+            let roleStats = {};
+            // 2. 按英雄 (Agent) 进行聚合
+            let agentStats = p.agentsMap || {};
+
+            matches.forEach(m => {
+                if (!roleStats[m.role]) {
+                    roleStats[m.role] = { role: m.role, count: 0, k: 0, d: 0, a: 0, acs: 0, fk: 0, fd: 0 };
+                }
+                const r = roleStats[m.role];
+                r.count += 1;
+                r.k += m.k;
+                r.d += m.d;
+                r.a += m.a;
+                r.acs += m.acs;
+                r.fk += m.fk;
+                r.fd += m.fd;
+            });
+
+            // 计算每个位置的评分 Score = avgACS * (KD^0.5) * (1 + FK/FD修正)
+            let bestRole = null;
+            let maxRoleScore = -1;
+            let roleAnalysisList = [];
+
+            Object.keys(roleStats).forEach(rName => {
+                const r = roleStats[rName];
+                const avgAcs = r.count ? (r.acs / r.count) : 0;
+                const kd = r.d > 0 ? (r.k / r.d) : r.k;
+                const fkfd = r.fd > 0 ? (r.fk / r.fd) : (r.fk > 0 ? r.fk : 1);
+                
+                // 综合战力分
+                const score = avgAcs * Math.sqrt(Math.max(0.5, kd)) * (0.8 + 0.2 * Math.min(2, fkfd));
+                r.score = score;
+                r.kd = kd.toFixed(2);
+                r.avgAcs = Math.round(avgAcs);
+                r.fkfdRatio = fkfd.toFixed(2);
+
+                roleAnalysisList.push(r);
+
+                if (score > maxRoleScore) {
+                    maxRoleScore = score;
+                    bestRole = rName;
+                }
+            });
+
+            // 排序得出最高效率位置
+            roleAnalysisList.sort((a,b) => b.score - a.score);
+
+            // A. 定位与主副岗位推荐文本
+            let positionRec = "";
+            if (roleAnalysisList.length === 1) {
+                positionRec = `选手目前专注在 <span class="tag-pill yellow">${roleAnalysisList[0].role}</span> (均分 ACS: ${roleAnalysisList[0].avgAcs}, K/D: ${roleAnalysisList[0].kd})。建议保持使用。`;
             } else {
-                evaluation = "正面拉枪对战压力较大，个人对局对枪兑换率偏低。";
-                advice = "建议减少正面第一出头位迎战，多以技能掩护队友创造输出机会。";
+                const top1 = roleAnalysisList[0];
+                const top2 = roleAnalysisList[1];
+                positionRec = `推荐主打 <span class="tag-pill green">${top1.role}</span> (表现评分最高，ACS: ${top1.avgAcs}, KD: ${top1.kd})；建议副选 <span class="tag-pill blue">${top2.role}</span>。`;
+                if (top1.role === '突击位' && top2.role === '烟位') {
+                    positionRec += ` 选手具备极强的第一时间提速与残局收割能力。`;
+                } else if (top1.role === '烟位' && top2.role === '哨位') {
+                    positionRec += ` 选手作风稳健，擅长控场与防守信息收集，适合担任队伍副指挥 (Secondary IGL)。`;
+                }
             }
 
-            if (avgFk >= 2.0) {
-                advice += " 具备出色的局首破点首杀能力。";
+            // B. 同位置英雄细节对比 (例如 Omen vs Clove, Jett vs Reyna)
+            let agentDiff = "";
+            let agentsArray = Object.values(agentStats);
+            
+            // 找出出场超过1次的英雄，在同位置下对比
+            let sameRoleGroups = {};
+            agentsArray.forEach(ag => {
+                if (!sameRoleGroups[ag.role]) sameRoleGroups[ag.role] = [];
+                sameRoleGroups[ag.role].push(ag);
+            });
+
+            let diffNotes = [];
+            Object.keys(sameRoleGroups).forEach(role => {
+                const group = sameRoleGroups[role];
+                if (group.length >= 2) {
+                    group.sort((a,b) => (b.acs/b.count) - (a.acs/a.count));
+                    const bestAg = group[0];
+                    const secondAg = group[1];
+                    const bestAcs = Math.round(bestAg.acs / bestAg.count);
+                    const secAcs = Math.round(secondAg.acs / secondAg.count);
+
+                    diffNotes.push(`在 <b>${role}</b> 位置上，选手的 <span class="text-green">${bestAg.agent}</span> (场均 ACS ${bestAcs}) 效果显著优于 <span class="text-red">${secondAg.agent}</span> (场均 ACS ${secAcs})。建议在重要比赛中优先使用 ${bestAg.agent}。`);
+                }
+            });
+
+            if (diffNotes.length > 0) {
+                agentDiff = diffNotes.join('<br>');
+            } else {
+                agentDiff = `选手目前英雄池较为单一或英雄分流明确。出场最高英雄为 <span class="text-yellow">${agentsArray.sort((a,b)=>b.count-a.count)[0]?.agent || 'Jett'}</span>。`;
             }
 
-            return { evaluation, advice };
+            // C. 激进 vs 稳健 / 首杀首死诊断
+            let fkfdAdvice = "";
+            const totalFk = p.totalFk || 0;
+            const totalFd = p.totalFd || 0;
+            const totalMatches = matches.length || 1;
+            const avgFk = (totalFk / totalMatches).toFixed(1);
+            const avgFd = (totalFd / totalMatches).toFixed(1);
+            const fkFdRatio = totalFd > 0 ? (totalFk / totalFd).toFixed(2) : totalFk.toFixed(1);
+
+            if (bestRole === '突击位') {
+                if (parseFloat(fkFdRatio) >= 1.2) {
+                    fkfdAdvice = `突击位首杀/首死比高达 <span class="text-green">${fkFdRatio}</span> (场均 ${avgFk} 首杀 / ${avgFd} 首死)。<b>推荐保持激进打法</b>，其作为一出头位的破点成功率极高，建议队友跟进跟枪。`;
+                } else {
+                    fkfdAdvice = `突击位首杀/首死比为 <span class="text-red">${fkFdRatio}</span> (场均 ${avgFk} 首杀 / ${avgFd} 首死)。<b>首死率偏高</b>，说明对枪过于盲目。建议减少单摸干拉，必须配合先锋位道具（闪光/震慑）后再出头。`;
+                }
+            } else if (bestRole === '哨位' || bestRole === '烟位') {
+                if (parseFloat(avgFd) >= 1.5) {
+                    fkfdAdvice = `作为 ${bestRole}，场均首死达 <span class="text-red">${avgFd}</span> 次。<b>强烈建议打法转为保守稳健</b>！作为控场/信息位过早暴毙会导致全队失去保底道具，应尽量做二号位拉扯或后排放烟。`;
+                } else {
+                    fkfdAdvice = `作为 ${bestRole}，场均首死仅 <span class="text-green">${avgFd}</span> 次 (首杀/首死比 ${fkFdRatio})。<b>打法纪律性极强</b>，能够有效存活并提供持续的场地技能支持。`;
+                }
+            } else {
+                fkfdAdvice = `场均 ${avgFk} 首杀 / ${avgFd} 首死 (FK/FD 比: ${fkFdRatio})。整体接战风格较为中规中矩，可根据团队阵容需求适当微调对枪节奏。`;
+            }
+
+            return { positionRec, agentDiff, fkfdAdvice };
         }
 
         function render(playersMap) {
@@ -446,10 +558,12 @@
                 const kd = (p.totalK / (p.totalD || 1)).toFixed(2);
                 const avgAcs = Math.round(p.totalAcs / matchCount);
                 const avgFk = (p.totalFk / matchCount).toFixed(1);
+                const avgFd = (p.totalFd / matchCount).toFixed(1);
                 const pm = p.totalK - p.totalD;
                 const agents = Object.values(p.agentsMap || {}).sort((a,b) => b.count - a.count);
 
-                const { evaluation, advice } = generatePlayerAdvice(parseFloat(kd), avgAcs, parseFloat(avgFk));
+                // 调用高级算法
+                const diag = generateAdvancedDiagnostics(p);
 
                 html += `
                 <div class="player-card">
@@ -475,8 +589,8 @@
                                 <div class="stat-val text-yellow">${avgAcs > 0 ? avgAcs : '-'}</div>
                             </div>
                             <div>
-                                <div class="stat-label">场均首杀</div>
-                                <div class="stat-val text-blue">${avgFk}</div>
+                                <div class="stat-label">场均 FK / FD</div>
+                                <div class="stat-val text-blue">${avgFk} / ${avgFd}</div>
                             </div>
                         </div>
                     </div>
@@ -500,7 +614,7 @@
                                     <th>击杀 / 死亡 / 助攻</th>
                                     <th>K/D</th>
                                     <th>平均 ACS</th>
-                                    <th>首杀</th>
+                                    <th>首杀 / 首死</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -512,7 +626,7 @@
                                         <td>${ag.k} / ${ag.d} / ${ag.a}</td>
                                         <td class="${(ag.k/(ag.d||1))>=1 ? 'text-green':'text-red'}"><b>${(ag.k/(ag.d||1)).toFixed(2)}</b></td>
                                         <td class="text-yellow"><b>${ag.count ? Math.round(ag.acs / ag.count) : '-'}</b></td>
-                                        <td class="text-blue">${ag.fk}</td>
+                                        <td class="text-blue">${ag.fk} / ${ag.fd || 0}</td>
                                     </tr>
                                 `).join('')}
                             </tbody>
@@ -530,7 +644,7 @@
                                     <th>击杀 / 死亡 / 助攻</th>
                                     <th>K/D</th>
                                     <th>ACS</th>
-                                    <th>首杀</th>
+                                    <th>首杀 / 首死</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -542,19 +656,46 @@
                                         <td>${m.k} / ${m.d} / ${m.a}</td>
                                         <td class="${(m.k/(m.d||1))>=1 ? 'text-green':'text-red'}"><b>${(m.k/(m.d||1)).toFixed(2)}</b></td>
                                         <td class="text-yellow">${m.acs || '-'}</td>
-                                        <td class="text-blue">${m.fk || 0}</td>
+                                        <td class="text-blue">${m.fk || 0} / ${m.fd || 0}</td>
                                     </tr>
                                 `).join('')}
                             </tbody>
                         </table>
                     </div>
 
-                    <!-- 赛训评价与优化建议 -->
+                    <!-- 🧠 进化版：深度赛训诊断模块 -->
                     <div class="advice-box">
-                        <div class="advice-title">💡 选手综合评价与优化建议</div>
-                        <div class="advice-content">
-                            <p><span class="advice-tag">综合评价</span>${evaluation}</p>
-                            <p style="margin-top: 4px;"><span class="advice-tag">赛训建议</span>${advice}</p>
+                        <div class="advice-header">
+                            <span>🧠</span> 进阶赛训诊断与战术建议 (基于位置与特工偏好分析)
+                        </div>
+                        <div class="advice-grid">
+                            <div class="advice-card">
+                                <div class="advice-card-title">
+                                    <span>🎯 主 / 副定位归属推荐</span>
+                                    <span style="color: #facc15;">POSITION RECOMMENDATION</span>
+                                </div>
+                                <div class="advice-card-body">
+                                    ${diag.positionRec}
+                                </div>
+                            </div>
+                            <div class="advice-card">
+                                <div class="advice-card-title">
+                                    <span>⚔️ 同定位英雄横向对比</span>
+                                    <span style="color: #60a5fa;">AGENT DIFFERENTIAL</span>
+                                </div>
+                                <div class="advice-card-body">
+                                    ${diag.agentDiff}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="advice-card">
+                            <div class="advice-card-title">
+                                <span>⚡ 激进 vs 稳健 / 首杀与首死 (FK/FD) 诊断</span>
+                                <span style="color: #f87171;">TACTICAL STYLE & FK/FD</span>
+                            </div>
+                            <div class="advice-card-body">
+                                ${diag.fkfdAdvice}
+                            </div>
                         </div>
                     </div>
                 </div>
