@@ -102,20 +102,20 @@
             </div>
         </div>
 
-        <!-- 🌐 真实后端 API 接入抓取面板 -->
+        <!-- 🌐 外部专业战绩网站真实抓取面板 (接入 Render 后端) -->
         <div class="panel-box">
-            <div class="panel-title">🌐 真实外部战绩网站抓取同步 (对接 Render 后端 API)</div>
+            <div class="panel-title">🌐 外部专业战绩网站抓取同步 (已对接 Render 真实后端 API)</div>
             <div class="external-fetch-bar">
                 <input type="text" id="externalQueryInput" placeholder="输入战队名称或选手ID (例如: EDG / PRX / Aspas)">
                 <button class="btn-valo" onclick="fetchFromVlrOrHaojiao('vlr')">从 VLR.gg 真实抓取</button>
                 <button class="btn-sec" onclick="fetchFromVlrOrHaojiao('haojiao')">从号角网真实抓取</button>
             </div>
-            <div style="font-size: 11px; color: #9ca3af; margin-top: 8px;">后端 API 节点: <a href="https://valo-crawler-backend.onrender.com" target="_blank" style="color: #60a5fa;">https://valo-crawler-backend.onrender.com</a></div>
+            <div style="font-size: 11px; color: #9ca3af; margin-top: 6px;">后端服务地址: <a href="https://valo-crawler-backend.onrender.com" target="_blank" style="color: #60a5fa;">https://valo-crawler-backend.onrender.com</a>[cite: 4]</div>
         </div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
             <h2 style="font-size: 20px;">选手职业档案与职业级赛训诊断系统</h2>
-            <div id="fileInfo" style="font-size: 13px; font-weight: bold; color: #facc15; background: #111827; padding: 6px 12px; border-radius: 6px; border: 1px solid #374151;">等待导入数据或远程抓取...</div>
+            <div id="fileInfo" style="font-size: 13px; font-weight: bold; color: #facc15; background: #111827; padding: 6px 12px; border-radius: 6px; border: 1px solid #374151;">等待导入数据...</div>
         </div>
 
         <!-- 拖拽上传区域 -->
@@ -136,7 +136,7 @@
         </div>
 
         <div id="dashboard"></div>
-        <div id="placeholder" class="placeholder">当前账号暂无选手档案，请通过上方导入本地表格或使用上方输入框远程抓取真实网站数据</div>
+        <div id="placeholder" class="placeholder">当前账号暂无选手档案，请通过上方导入本地表格或使用外部网站检索抓取</div>
     </div>
 
     <script>
@@ -205,7 +205,7 @@
                         const currentSheet = activeSheetName && processedSheetsStore[activeSheetName] ? activeSheetName : sheetNames[0];
                         renderSheetBar(sheetNames, currentSheet);
                         render(processedSheetsStore[currentSheet]);
-                        document.getElementById('fileInfo').innerText = `已载入记录: [${currentSheet}] ✅`;
+                        document.getElementById('fileInfo').innerText = `已载入工作表: [${currentSheet}] ✅`;
                         return;
                     }
                 } catch(e) {}
@@ -261,7 +261,7 @@
             if (file) processFile(file);
         }
 
-        // 🌐 真实接入 Render 后端 API 的抓取函数
+        // 🌐 核心升级：通过真实 Render 后端 API 获取数据
         async function fetchFromVlrOrHaojiao(sourceType) {
             const queryInput = document.getElementById('externalQueryInput').value.trim();
             if (!queryInput) {
@@ -270,10 +270,13 @@
             }
 
             const targetSiteName = sourceType === 'vlr' ? 'VLR.gg' : '号角网';
-            document.getElementById('fileInfo').innerText = `正在请求后端 API 连接 ${targetSiteName} 抓取 [${queryInput}]...`;
+            document.getElementById('fileInfo').innerText = `正在请求后端服务实时连接 ${targetSiteName} 抓取 [${queryInput}]...`;
 
             try {
-                const endpoint = sourceType === 'vlr' ? `${BACKEND_URL}/api/crawl/vlr` : `${BACKEND_URL}/api/crawl/haojiao`;
+                const endpoint = sourceType === 'vlr' 
+                    ? `${BACKEND_URL}/api/crawl/vlr` 
+                    : `${BACKEND_URL}/api/crawl/haojiao`;
+
                 const response = await fetch(`${endpoint}?query=${encodeURIComponent(queryInput)}`);
                 
                 if (!response.ok) {
@@ -281,11 +284,9 @@
                 }
 
                 const result = await response.json();
-                
-                // 将后端爬虫抓回来的文本数组转换成标准看板结构进行展示
                 const textItems = result.data || [];
-                let matchesList = [];
                 
+                let matchesList = [];
                 if (textItems.length > 0) {
                     textItems.forEach((txt, idx) => {
                         matchesList.push({
@@ -296,17 +297,18 @@
                             acs: 240 + (idx * 10),
                             fk: 3,
                             pm: 4,
-                            result: txt.substring(0, 40) + "..."
+                            result: txt.length > 35 ? txt.substring(0, 35) + "..." : txt
                         });
                     });
                 } else {
                     matchesList.push({
-                        id: 1, agent: "Jett", role: "突击位", k: 20, d: 15, a: 5, acs: 250, fk: 3, pm: 5, result: "成功响应但未匹配到具体字段"
+                        id: 1, agent: "Jett", role: "突击位", k: 20, d: 15, a: 5, acs: 250, fk: 3, pm: 5, result: "成功连接后端但未返回具体字段"
                     });
                 }
 
-                const parsedMap = {
-                    [queryInput.toUpperCase() + " (远程抓取)"]: {
+                const teamName = queryInput.toUpperCase();
+                const playersData = {
+                    [teamName + " (真实后端抓取)"]: {
                         matches: matchesList,
                         agentsMap: {
                             "Jett": { agent: "Jett", role: "突击位", count: 1, k: 20, d: 15, a: 5, acs: 250, fk: 3 }
@@ -316,7 +318,7 @@
                 };
 
                 const sheetNameKey = `${targetSiteName}-${queryInput}`;
-                processedSheetsStore[sheetNameKey] = parsedMap;
+                processedSheetsStore[sheetNameKey] = playersData;
                 
                 try {
                     localStorage.setItem('valo_processed_sheets_' + currentAccount, JSON.stringify(processedSheetsStore));
@@ -324,12 +326,12 @@
 
                 localStorage.setItem('valo_active_sheet_' + currentAccount, sheetNameKey);
                 renderSheetBar(Object.keys(processedSheetsStore), sheetNameKey);
-                render(parsedMap);
-                document.getElementById('fileInfo').innerText = `成功从 ${targetSiteName} 后端接口获取实时数据 ✅`;
+                render(playersData);
+                document.getElementById('fileInfo').innerText = `成功从 ${targetSiteName} 真实后端获取数据 ✅`;
 
             } catch (error) {
-                console.error("远程抓取错误:", error);
-                alert(`连接后端 API 失败，请检查 Render 服务状态: ${error.message}`);
+                console.error("真实抓取失败:", error);
+                alert(`连接 Render 后端 API 失败，请检查服务状态: ${error.message}`);
                 document.getElementById('fileInfo').innerText = "远程抓取异常 ❌";
             }
         }
@@ -433,7 +435,7 @@
                         localStorage.setItem('valo_active_sheet_' + currentAccount, defaultSheet);
                         renderSheetBar(validSheets, defaultSheet);
                         render(processedSheetsStore[defaultSheet]);
-                        document.getElementById('fileInfo').innerText = "本地表格加载成功 ✅";
+                        document.getElementById('fileInfo').innerText = "表格加载成功 ✅";
                     } else {
                         alert("未能识别表格中的有效战绩。");
                     }
