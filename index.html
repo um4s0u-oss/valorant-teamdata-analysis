@@ -102,19 +102,19 @@
             </div>
         </div>
 
-        <!-- 🌐 外部专业战绩网站抓取同步面板 (多选手智能生成) -->
+        <!-- 🌐 外部专业战绩网站抓取同步面板 (已绑定云端后端) -->
         <div class="panel-box">
-            <div class="panel-title">🌐 外部专业战绩网站抓取同步 (支持 VLR.gg & 号角网多队员解析)</div>
+            <div class="panel-title">🌐 外部专业战绩网站实时抓取同步 (已连线 Render 云端后端)</div>
             <div class="external-fetch-bar">
                 <input type="text" id="externalQueryInput" placeholder="输入战队名称或选手ID (例如: EDG / PRX / Aspas)">
-                <button class="btn-valo" onclick="fetchFromVlrOrHaojiao('vlr')">从 VLR.gg 抓取整队档案</button>
-                <button class="btn-sec" onclick="fetchFromVlrOrHaojiao('haojiao')">从号角网抓取整队档案</button>
+                <button class="btn-valo" onclick="fetchFromVlrOrHaojiao('vlr')">从 VLR.gg 实时抓取</button>
+                <button class="btn-sec" onclick="fetchFromVlrOrHaojiao('haojiao')">从号角网实时抓取</button>
             </div>
         </div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
             <h2 style="font-size: 20px;">选手职业档案与职业级赛训诊断系统</h2>
-            <div id="fileInfo" style="font-size: 13px; font-weight: bold; color: #facc15; background: #111827; padding: 6px 12px; border-radius: 6px; border: 1px solid #374151;">等待导入数据...</div>
+            <div id="fileInfo" style="font-size: 13px; font-weight: bold; color: #facc15; background: #111827; padding: 6px 12px; border-radius: 6px; border: 1px solid #374151;">等待导入数据或在线检索...</div>
         </div>
 
         <!-- 拖拽上传区域 -->
@@ -258,94 +258,49 @@
             if (file) processFile(file);
         }
 
-        // 🌐 核心升级：根据输入的战队或选手名称智能生成多名真实队员的职业战绩数据结构
-        function fetchFromVlrOrHaojiao(sourceType) {
+        // 🌐 核心升级：通过 fetch() 异步调用你的 Render 云端后端接口获取实时数据
+        async function fetchFromVlrOrHaojiao(sourceType) {
             const queryInput = document.getElementById('externalQueryInput').value.trim();
             if (!queryInput) {
                 alert("请输入要检索的战队名称或选手ID（例如：EDG、PRX、Aspas）");
                 return;
             }
 
-            const targetSite = sourceType === 'vlr' ? 'https://www.vlr.gg' : 'http://web.haojiao.cc';
-            alert(`正在连接 [${targetSite}] 接口，智能解析战队「${queryInput}」的完整 5 人主力阵容及赛训数据...`);
+            const infoNode = document.getElementById('fileInfo');
+            const targetName = sourceType === 'vlr' ? 'VLR.gg' : '号角网';
+            infoNode.innerText = `正在连接云端后端，实时检索 [${targetName}] 战队「${queryInput}」...`;
 
-            // 智能生成 5 名不同定位的职业选手阵容
-            const teamName = queryInput.toUpperCase();
-            const playersData = {
-                [teamName + " - 突破手"]: {
-                    matches: [
-                        { id: 1, agent: "Jett", role: "突击位", k: 25, d: 15, a: 4, acs: 298, fk: 7, pm: 10, result: "国际联赛 (胜)" },
-                        { id: 2, agent: "Raze", role: "突击位", k: 21, d: 16, a: 3, acs: 260, fk: 5, pm: 5, result: "季后赛 (胜)" },
-                        { id: 3, agent: "Reyna", role: "突击位", k: 18, d: 17, a: 6, acs: 235, fk: 3, pm: 1, result: "小组赛 (负)" }
-                    ],
-                    agentsMap: {
-                        "Jett": { agent: "Jett", role: "突击位", count: 1, k: 25, d: 15, a: 4, acs: 298, fk: 7 },
-                        "Raze": { agent: "Raze", role: "突击位", count: 1, k: 21, d: 16, a: 3, acs: 260, fk: 5 },
-                        "Reyna": { agent: "Reyna", role: "突击位", count: 1, k: 18, d: 17, a: 6, acs: 235, fk: 3 }
-                    },
-                    totalK: 64, totalD: 48, totalA: 13, totalAcs: 793, totalFk: 15
-                },
-                [teamName + " - 先锋位"]: {
-                    matches: [
-                        { id: 1, agent: "Sova", role: "先锋位", k: 17, d: 13, a: 14, acs: 225, fk: 2, pm: 4, result: "国际联赛 (胜)" },
-                        { id: 2, agent: "Fade", role: "先锋位", k: 15, d: 14, a: 12, acs: 210, fk: 1, pm: 1, result: "季后赛 (胜)" },
-                        { id: 3, agent: "Breach", role: "先锋位", k: 16, d: 15, a: 10, acs: 215, fk: 2, pm: 1, result: "小组赛 (负)" }
-                    ],
-                    agentsMap: {
-                        "Sova": { agent: "Sova", role: "先锋位", count: 1, k: 17, d: 13, a: 14, acs: 225, fk: 2 },
-                        "Fade": { agent: "Fade", role: "先锋位", count: 1, k: 15, d: 14, a: 12, acs: 210, fk: 1 },
-                        "Breach": { agent: "Breach", role: "先锋位", count: 1, k: 16, d: 15, a: 10, acs: 215, fk: 2 }
-                    },
-                    totalK: 48, totalD: 42, totalA: 36, totalAcs: 650, totalFk: 5
-                },
-                [teamName + " - 控场烟位"]: {
-                    matches: [
-                        { id: 1, agent: "Omen", role: "烟位", k: 16, d: 12, a: 11, acs: 218, fk: 3, pm: 4, result: "国际联赛 (胜)" },
-                        { id: 2, agent: "Viper", role: "烟位", k: 14, d: 13, a: 9, acs: 205, fk: 1, pm: 1, result: "季后赛 (胜)" },
-                        { id: 3, agent: "Clove", role: "烟位", k: 17, d: 16, a: 8, acs: 230, fk: 2, pm: 1, result: "小组赛 (负)" }
-                    ],
-                    agentsMap: {
-                        "Omen": { agent: "Omen", role: "烟位", count: 1, k: 16, d: 12, a: 11, acs: 218, fk: 3 },
-                        "Viper": { agent: "Viper", role: "烟位", count: 1, k: 14, d: 13, a: 9, acs: 205, fk: 1 },
-                        "Clove": { agent: "Clove", role: "烟位", count: 1, k: 17, d: 16, a: 8, acs: 230, fk: 2 }
-                    },
-                    totalK: 47, totalD: 41, totalA: 28, totalAcs: 653, totalFk: 6
-                },
-                [teamName + " - 自由人"]: {
-                    matches: [
-                        { id: 1, agent: "KAY/O", role: "先锋位", k: 18, d: 14, a: 10, acs: 235, fk: 3, pm: 4, result: "国际联赛 (胜)" },
-                        { id: 2, agent: "Yoru", role: "突击位", k: 19, d: 15, a: 6, acs: 250, fk: 4, pm: 4, result: "季后赛 (胜)" }
-                    ],
-                    agentsMap: {
-                        "KAY/O": { agent: "KAY/O", role: "先锋位", count: 1, k: 18, d: 14, a: 10, acs: 235, fk: 3 },
-                        "Yoru": { agent: "Yoru", role: "突击位", count: 1, k: 19, d: 15, a: 6, acs: 250, fk: 4 }
-                    },
-                    totalK: 37, totalD: 29, totalA: 16, totalAcs: 485, totalFk: 7
-                },
-                [teamName + " - 哨位守护"]: {
-                    matches: [
-                        { id: 1, agent: "Cypher", role: "哨位", k: 15, d: 12, a: 7, acs: 200, fk: 1, pm: 3, result: "国际联赛 (胜)" },
-                        { id: 2, agent: "Killjoy", role: "哨位", k: 16, d: 13, a: 5, acs: 215, fk: 2, pm: 3, result: "季后赛 (胜)" }
-                    ],
-                    agentsMap: {
-                        "Cypher": { agent: "Cypher", role: "哨位", count: 1, k: 15, d: 12, a: 7, acs: 200, fk: 1 },
-                        "Killjoy": { agent: "Killjoy", role: "哨位", count: 1, k: 16, d: 13, a: 5, acs: 215, fk: 2 }
-                    },
-                    totalK: 31, totalD: 25, totalA: 12, totalAcs: 415, totalFk: 3
-                }
-            };
-
-            const sheetNameKey = (sourceType === 'vlr' ? 'VLR-' : '号角网-') + teamName;
-            processedSheetsStore[sheetNameKey] = playersData;
-            
             try {
-                localStorage.setItem('valo_processed_sheets_' + currentAccount, JSON.stringify(processedSheetsStore));
-            } catch(e){}
+                // 你的 Render 云端后端接口地址
+                const backendBaseUrl = "https://valo-crawler-backend.onrender.com"; 
+                const response = await fetch(`${backendBaseUrl}/api/fetch-team?source=${sourceType}&query=${encodeURIComponent(queryInput)}`);
+                
+                if (!response.ok) throw new Error("后端响应异常");
 
-            localStorage.setItem('valo_active_sheet_' + currentAccount, sheetNameKey);
-            renderSheetBar(Object.keys(processedSheetsStore), sheetNameKey);
-            render(playersData);
-            document.getElementById('fileInfo').innerText = `已从 [${targetSite}] 成功抓取战队 [${teamName}] 完整5人档案 ✅`;
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    const sheetNameKey = `${sourceType.toUpperCase()}实时-${queryInput.toUpperCase()}`;
+                    processedSheetsStore[sheetNameKey] = result.data;
+                    
+                    try {
+                        localStorage.setItem('valo_processed_sheets_' + currentAccount, JSON.stringify(processedSheetsStore));
+                    } catch(e){}
+
+                    localStorage.setItem('valo_active_sheet_' + currentAccount, sheetNameKey);
+                    renderSheetBar(Object.keys(processedSheetsStore), sheetNameKey);
+                    render(result.data);
+                    
+                    infoNode.innerText = `成功同步 [${sourceType.toUpperCase()}] 战队 [${queryInput.toUpperCase()}] 实时赛训档案 ✅`;
+                } else {
+                    alert("未能获取到数据，请检查战队名称是否正确。");
+                    infoNode.innerText = "实时同步失败 ❌";
+                }
+            } catch (error) {
+                console.error("Fetch Error:", error);
+                alert("无法连接到云端爬虫后端。\n提示：由于免费版后端平时会休眠，第一次查询可能需要等待 30-50 秒唤醒，请稍后重试。");
+                infoNode.innerText = "实时同步超时/失败 ❌";
+            }
         }
 
         // 🛡️ 完美精确解析引擎
@@ -592,8 +547,8 @@
                                         <td><b>${ag.agent}</b></td>
                                         <td>${getRoleBadge(ag.role)}</td>
                                         <td>${ag.count} 场</td>
-                                        <td>${ag.k} / ${ag.d} / ${ag.a}</td>
-                                        <td class="${(ag.k/(ag.d||1))>=1 ? 'text-green':'text-red'}"><b>${(ag.k/(ag.d||1)).toFixed(2)}</b></td>
+                                        <td>${ag.k} / ${ag.d} /${ag.a}</td>
+                                        <td class="${(ag.k/(ag.d\vert{}\vert{}1))>=1 ? 'text-green':'text-red'}"><b>${(ag.k/(ag.d||1)).toFixed(2)}</b></td>
                                         <td class="text-yellow"><b>${ag.count ? Math.round(ag.acs / ag.count) : '-'}</b></td>
                                     </tr>
                                 `).join('')}
