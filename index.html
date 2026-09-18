@@ -3,21 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Valorant 战队数据专业分析系统 v27.0 (外部多选手智能抓取版)</title>
+    <title>Valorant 战队数据专业分析系统 v27.0</title>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
         :root { --valo-red: #ff4655; --dark-bg: #0f1923; --card-bg: #1f2937; }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { background-color: var(--dark-bg); color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; }
         .container { max-width: 1100px; margin: 0 auto; }
-        
         .header-bar { background: #1f2937; border: 1px solid #374151; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; }
         .brand { display: flex; align-items: center; gap: 12px; }
         .brand-logo { background: #dc2626; padding: 8px 12px; border-radius: 8px; font-weight: 900; font-style: italic; font-size: 18px; }
         .brand-title { font-size: 20px; font-weight: 900; letter-spacing: -0.5px; }
         .brand-title span { color: var(--valo-red); }
         .account-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-        
         select, button, input { font-family: inherit; }
         select, input { background: #111827; border: 1px solid #4b5563; color: white; padding: 8px 12px; border-radius: 6px; outline: none; font-size: 14px; }
         .btn-valo { background-color: var(--valo-red); color: white; padding: 10px 20px; border-radius: 6px; font-weight: bold; border: none; cursor: pointer; display: inline-block; }
@@ -25,66 +23,46 @@
         .btn-sec { background-color: #374151; color: white; padding: 8px 14px; border-radius: 6px; font-size: 13px; font-weight: bold; border: none; cursor: pointer; }
         .btn-sec:hover { background-color: #4b5563; }
         .btn-danger { background-color: #7f1d1d; border: 1px solid #991b1b; color: #fca5a5; padding: 8px 14px; border-radius: 6px; font-size: 13px; font-weight: bold; border: none; cursor: pointer; }
-        .btn-danger:hover { background-color: #991b1b; }
-
         .panel-box { background: #1a232e; border: 1px solid #374151; border-radius: 16px; padding: 20px; margin-bottom: 20px; }
         .panel-title { font-size: 15px; font-weight: bold; color: #facc15; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
-        
         .external-fetch-bar { display: flex; gap: 10px; flex-wrap: wrap; }
         .external-fetch-bar input { flex: 1; min-width: 220px; }
-
-        .drop-zone { border: 2px dashed #4b5563; background: #1a232e; border-radius: 16px; padding: 20px; text-align: center; cursor: pointer; margin-bottom: 20px; transition: 0.2s; }
-        .drop-zone:hover, .drop-zone.dragover { border-color: var(--valo-red); background: #232d3b; }
-
+        .drop-zone { border: 2px dashed #4b5563; background: #1a232e; border-radius: 16px; padding: 20px; text-align: center; cursor: pointer; margin-bottom: 20px; }
         .sheet-selector-bar { background: #1f2937; border: 1px solid #374151; padding: 12px 20px; border-radius: 10px; margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
-        .sheet-selector-title { font-size: 14px; font-weight: bold; color: #facc15; display: flex; align-items: center; gap: 8px; }
-        
-        .player-card { background-color: var(--card-bg); border-left: 5px solid var(--valo-red); border-radius: 12px; margin-bottom: 24px; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3); }
+        .player-card { background-color: var(--card-bg); border-left: 5px solid var(--valo-red); border-radius: 12px; margin-bottom: 24px; overflow: hidden; }
         .player-header { background: #111827; padding: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; }
         .player-info { display: flex; align-items: center; gap: 16px; }
         .avatar { width: 56px; height: 56px; background: #dc2626; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 900; font-style: italic; }
-        
         .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; text-align: center; }
         .stat-label { font-size: 11px; color: #9ca3af; font-weight: bold; margin-bottom: 4px; }
         .stat-val { font-size: 22px; font-weight: 900; }
-        
         .tab-bar { background: #111827; padding: 10px 20px; border-top: 1px solid #374151; display: flex; justify-content: space-between; align-items: center; }
         .toggle-btn { background: #374151; color: #d1d5db; border: none; padding: 6px 14px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer; margin-left: 6px; }
         .toggle-btn.active { background: var(--valo-red); color: white; }
-
         table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
-        th { color: #9ca3af; font-size: 11px; padding: 12px 12px; border-bottom: 1px solid #374151; text-transform: uppercase; }
-        td { padding: 12px 12px; border-bottom: 1px solid #2d3748; }
-
+        th { color: #9ca3af; font-size: 11px; padding: 12px; border-bottom: 1px solid #374151; text-transform: uppercase; }
+        td { padding: 12px; border-bottom: 1px solid #2d3748; }
         .advice-box { background: #0b131b; border-top: 2px solid #374151; padding: 20px; }
-        .advice-header { font-size: 15px; font-weight: 900; color: #facc15; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; text-transform: uppercase; }
+        .advice-header { font-size: 15px; font-weight: 900; color: #facc15; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
         .advice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 12px; }
-        @media (max-width: 768px) { .advice-grid { grid-template-columns: 1fr; } }
         .advice-card { background: #17212b; border: 1px solid #2d3748; border-radius: 8px; padding: 14px; }
-        .advice-card-title { font-size: 12px; font-weight: bold; color: #9ca3af; margin-bottom: 8px; text-transform: uppercase; display: flex; justify-content: space-between; }
+        .advice-card-title { font-size: 12px; font-weight: bold; color: #9ca3af; margin-bottom: 8px; }
         .advice-card-body { font-size: 13px; color: #e5e7eb; line-height: 1.6; }
-        
         .tag-pill { display: inline-block; background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; }
         .tag-pill.green { background: rgba(74, 222, 128, 0.2); color: #4ade80; border-color: rgba(74, 222, 128, 0.4); }
         .tag-pill.yellow { background: rgba(250, 204, 21, 0.2); color: #facc15; border-color: rgba(250, 204, 21, 0.4); }
         .tag-pill.blue { background: rgba(96, 165, 250, 0.2); color: #60a5fa; border-color: rgba(96, 165, 250, 0.4); }
-
-        .role-badge { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: bold; text-transform: uppercase; display: inline-block; }
+        .role-badge { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: bold; display: inline-block; }
         .role-duelist { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
         .role-initiator { background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); }
         .role-controller { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
         .role-sentinel { background: rgba(139, 92, 246, 0.2); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.4); }
-
-        .text-green { color: #4ade80; }
-        .text-red { color: #f87171; }
-        .text-yellow { color: #facc15; }
-        .text-blue { color: #60a5fa; }
+        .text-green { color: #4ade80; } .text-red { color: #f87171; } .text-yellow { color: #facc15; } .text-blue { color: #60a5fa; }
         .placeholder { text-align: center; padding: 60px; border: 1px dashed #374151; border-radius: 12px; color: #6b7280; }
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- 头部账号管理 -->
         <div class="header-bar">
             <div class="brand">
                 <div class="brand-logo">PRO</div>
@@ -102,7 +80,6 @@
             </div>
         </div>
 
-        <!-- 🌐 外部专业战绩网站抓取同步面板 (已绑定云端后端) -->
         <div class="panel-box">
             <div class="panel-title">🌐 外部专业战绩网站实时抓取同步 (已连线 Render 云端后端)</div>
             <div class="external-fetch-bar">
@@ -117,7 +94,6 @@
             <div id="fileInfo" style="font-size: 13px; font-weight: bold; color: #facc15; background: #111827; padding: 6px 12px; border-radius: 6px; border: 1px solid #374151;">等待导入数据或在线检索...</div>
         </div>
 
-        <!-- 拖拽上传区域 -->
         <div id="dropZone" class="drop-zone" onclick="document.getElementById('fileInput').click()">
             <div style="font-size: 32px; margin-bottom: 6px;">📂</div>
             <h3 style="font-size: 16px; margin-bottom: 4px;">点击或拖入本地 Excel / CSV 战绩表格 (.xlsx/.xls/.csv)</h3>
@@ -125,12 +101,8 @@
             <input type="file" id="fileInput" accept=".xlsx, .xls, .csv" style="display: none;" onchange="handleFileSelect(event)">
         </div>
 
-        <!-- Sheet 选择栏 -->
         <div id="sheetBar" class="sheet-selector-bar" style="display: none;">
-            <div class="sheet-selector-title">
-                <span>🎯</span>
-                <span>当前显示的工作表：</span>
-            </div>
+            <div class="sheet-selector-title"><span>🎯</span><span>当前显示的工作表：</span></div>
             <select id="sheetSelect" onchange="onSheetDropdownChange(this.value)" style="min-width: 240px; font-weight: bold; border-color: var(--valo-red);"></select>
         </div>
 
@@ -258,7 +230,6 @@
             if (file) processFile(file);
         }
 
-        // 🌐 核心升级：通过 fetch() 异步调用你的 Render 云端后端接口获取实时数据
         async function fetchFromVlrOrHaojiao(sourceType) {
             const queryInput = document.getElementById('externalQueryInput').value.trim();
             if (!queryInput) {
@@ -271,7 +242,6 @@
             infoNode.innerText = `正在连接云端后端，实时检索 [${targetName}] 战队「${queryInput}」...`;
 
             try {
-                // 你的 Render 云端后端接口地址
                 const backendBaseUrl = "https://valo-crawler-backend.onrender.com"; 
                 const response = await fetch(`${backendBaseUrl}/api/fetch-team?source=${sourceType}&query=${encodeURIComponent(queryInput)}`);
                 
@@ -303,7 +273,6 @@
             }
         }
 
-        // 🛡️ 完美精确解析引擎
         function absoluteSafeParse(rows) {
             if (!rows || !Array.isArray(rows) || rows.length < 2) return null;
             let headerIdx = -1;
@@ -425,7 +394,6 @@
             }
         }
 
-        // 🧠 职业级赛训专家诊断算法
         function generateAdvancedDiagnostics(p) {
             const matches = p.matches || [];
             if (matches.length === 0) return { positionRec: "缺乏数据", agentDiff: "无", fkfdAdvice: "无" };
@@ -446,8 +414,6 @@
                 const kd = r.d > 0 ? (r.k / r.d) : r.k;
                 const avgFk = r.count ? (r.fk / r.count) : 0;
                 r.score = avgAcs * Math.sqrt(Math.max(0.5, kd)) * (1 + 0.15 * avgFk);
-                r.kd = kd.toFixed(2);
-                r.avgAcs = Math.round(avgAcs);
                 roleAnalysisList.push(r);
             });
             roleAnalysisList.sort((a,b) => b.score - a.score);
@@ -467,7 +433,7 @@
                 const group = sameRoleGroups[role];
                 if (group.length >= 2) {
                     group.sort((a,b) => (b.acs/b.count) - (a.acs/a.count));
-                    diffNotes.push(`在 <b>${role}</b> 中，<span class="text-green">${group[0].agent}</span> (ACS: ${Math.round(group[0].acs/group[0].count)}) 表现优于 <span class="text-red">${group[1].agent}</span>。`);
+                    diffNotes.push(`在 <b>${role}</b> 中，<span class="text-green">${group[0].agent}</span> 表现优于 <span class="text-red">${group[1].agent}</span>。`);
                 }
             });
             agentDiff = diffNotes.length > 0 ? diffNotes.join('<br>') : `主力英雄：${Object.values(agentStats)[0]?.agent || 'Jett'}`;
@@ -509,25 +475,12 @@
                             </div>
                         </div>
                         <div class="stats-grid">
-                            <div>
-                                <div class="stat-label">生涯 K/D</div>
-                                <div class="stat-val ${kd >= 1.0 ? 'text-green' : 'text-red'}">${kd}</div>
-                            </div>
-                            <div>
-                                <div class="stat-label">正负值 +/-</div>
-                                <div class="stat-val ${pm >= 0 ? 'text-green' : 'text-red'}">${pm > 0 ? '+' + pm : pm}</div>
-                            </div>
-                            <div>
-                                <div class="stat-label">平均 ACS</div>
-                                <div class="stat-val text-yellow">${avgAcs > 0 ? avgAcs : '-'}</div>
-                            </div>
-                            <div>
-                                <div class="stat-label">场均首杀</div>
-                                <div class="stat-val text-blue">${(p.totalFk/matchCount).toFixed(1)}</div>
-                            </div>
+                            <div><div class="stat-label">生涯 K/D</div><div class="stat-val ${kd >= 1.0 ? 'text-green' : 'text-red'}">${kd}</div></div>
+                            <div><div class="stat-label">正负值 +/-</div><div class="stat-val ${pm >= 0 ? 'text-green' : 'text-red'}">${pm > 0 ? '+' + pm : pm}</div></div>
+                            <div><div class="stat-label">平均 ACS</div><div class="stat-val text-yellow">${avgAcs > 0 ? avgAcs : '-'}</div></div>
+                            <div><div class="stat-label">场均首杀</div><div class="stat-val text-blue">${(p.totalFk/matchCount).toFixed(1)}</div></div>
                         </div>
                     </div>
-
                     <div class="tab-bar">
                         <span style="font-size: 12px; font-weight: bold; color: #9ca3af;">📊 详细战绩视图</span>
                         <div>
@@ -535,12 +488,9 @@
                             <button class="toggle-btn" id="btn-match-${idx}" onclick="switchView(${idx}, 'match')">单局历史记录 (${p.matches.length})</button>
                         </div>
                     </div>
-
                     <div id="view-agg-${idx}" style="padding: 16px;">
                         <table>
-                            <thead>
-                                <tr><th>特工/英雄</th><th>定位</th><th>出场次数</th><th>击杀 / 死亡 / 助攻</th><th>K/D</th><th>平均 ACS</th></tr>
-                            </thead>
+                            <thead><tr><th>特工/英雄</th><th>定位</th><th>出场次数</th><th>击杀 / 死亡 / 助攻</th><th>K/D</th><th>平均 ACS</th></tr></thead>
                             <tbody>
                                 ${agents.map(ag => `
                                     <tr>
@@ -555,20 +505,15 @@
                             </tbody>
                         </table>
                     </div>
-
                     <div id="view-match-${idx}" style="padding: 16px; display: none;">
                         <table>
-                            <thead>
-                                <tr><th>场次</th><th>英雄角色</th><th>定位</th><th>ACS</th><th>K</th><th>D</th><th>A</th><th>K/D</th><th>+/-</th><th>首杀</th><th>对局状态</th></tr>
-                            </thead>
+                            <thead><tr><th>场次</th><th>英雄角色</th><th>定位</th><th>ACS</th><th>K</th><th>D</th><th>A</th><th>K/D</th><th>+/-</th><th>首杀</th><th>对局状态</th></tr></thead>
                             <tbody>
                                 ${p.matches.map(m => {
                                     const mKd = (m.k / (m.d || 1)).toFixed(2);
                                     return `
                                     <tr>
-                                        <td>#${m.id}</td>
-                                        <td><b>${m.agent}</b></td>
-                                        <td>${getRoleBadge(m.role)}</td>
+                                        <td>#${m.id}</td><td><b>${m.agent}</b></td><td>${getRoleBadge(m.role)}</td>
                                         <td class="text-yellow"><b>${m.acs || '-'}</b></td>
                                         <td>${m.k}</td><td>${m.d}</td><td>${m.a}</td>
                                         <td class="${m.k >= m.d ? 'text-green':'text-red'}"><b>${mKd}</b></td>
@@ -580,26 +525,15 @@
                             </tbody>
                         </table>
                     </div>
-
                     <div class="advice-box">
                         <div class="advice-header"><span>🧠</span> 职业级赛训专家诊断与战术建议</div>
                         <div class="advice-grid">
-                            <div class="advice-card">
-                                <div class="advice-card-title"><span>🎯 主 / 副定位综合推荐</span></div>
-                                <div class="advice-card-body">${diag.positionRec}</div>
-                            </div>
-                            <div class="advice-card">
-                                <div class="advice-card-title"><span>⚔️ 同定位英雄横向对比</span></div>
-                                <div class="advice-card-body">${diag.agentDiff}</div>
-                            </div>
+                            <div class="advice-card"><div class="advice-card-title">主 / 副定位综合推荐</div><div class="advice-card-body">${diag.positionRec}</div></div>
+                            <div class="advice-card"><div class="advice-card-title">同定位英雄横向对比</div><div class="advice-card-body">${diag.agentDiff}</div></div>
                         </div>
-                        <div class="advice-card">
-                            <div class="advice-card-title"><span>⚡ 激进 vs 保守 / 首杀与对位风格诊断</span></div>
-                            <div class="advice-card-body">${diag.fkfdAdvice}</div>
-                        </div>
+                        <div class="advice-card"><div class="advice-card-title">激进 vs 保守 / 首杀风格诊断</div><div class="advice-card-body">${diag.fkfdAdvice}</div></div>
                     </div>
-                </div>
-                `;
+                </div>`;
             });
             db.innerHTML = html;
         }
