@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Valorant 战队数据专业分析系统 v27.0 (外部多选手智能抓取版)</title>
+    <title>Valorant 战队数据专业分析系统 v27.1</title>
+    <!-- 引入 SheetJS 解析 Excel/CSV -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
         :root { --valo-red: #ff4655; --dark-bg: #0f1923; --card-bg: #1f2937; }
@@ -93,7 +94,7 @@
             <div class="brand">
                 <div class="brand-logo">PRO</div>
                 <div>
-                    <div class="brand-title">VALORANT <span>PRO ARCHIVES v27.0</span></div>
+                    <div class="brand-title">VALORANT <span>PRO ARCHIVES v27.1</span></div>
                     <div style="font-size: 12px; color: #9ca3af; margin-top: 2px;">
                         当前激活账号: <span id="currentAccountDisplay" style="color: #facc15; font-weight: bold;">默认战队分析</span>
                     </div>
@@ -106,7 +107,7 @@
             </div>
         </div>
 
-        <!-- 🌐 外部专业战绩网站抓取同步面板 -->
+        <!-- 外部同步面板 -->
         <div class="panel-box">
             <div class="panel-title">🌐 外部专业战绩网站抓取同步 (支持 VLR.gg & 号角网多队员解析)</div>
             <div class="external-fetch-bar">
@@ -122,7 +123,7 @@
         </div>
 
         <!-- 拖拽上传区域 -->
-        <div id="dropZone" class="drop-zone" onclick="document.getElementById('fileInput').click()">
+        <div id="dropZone" class="drop-zone" onclick="triggerFileInput()">
             <div style="font-size: 32px; margin-bottom: 6px;">📂</div>
             <h3 style="font-size: 16px; margin-bottom: 4px;">点击或拖入本地 Excel / CSV 战绩表格 (.xlsx/.xls/.csv)</h3>
             <p style="color: #9ca3af; font-size: 12px;">完美兼容 DTG、HTG 及全球各平台表格</p>
@@ -138,7 +139,7 @@
             <select id="sheetSelect" onchange="onSheetDropdownChange(this.value)" style="min-width: 240px; font-weight: bold; border-color: var(--valo-red);"></select>
         </div>
 
-        <!-- 🔍 额外手动检索/置顶选手面板 -->
+        <!-- 手动检索/置顶选手面板 -->
         <div class="panel-box" id="searchPanel" style="display: none;">
             <div class="panel-title">🔍 额外选手手动检索 / 优先置顶</div>
             <div class="search-player-bar">
@@ -183,31 +184,45 @@
         }
 
         const DEFAULT_ACC = ["默认战队分析", "一队档案", "二队档案", "试训档案"];
-        let currentAccount = localStorage.getItem('valo_active_acc') || DEFAULT_ACC[0];
+        let currentAccount = safeStorageGet('valo_active_acc') || DEFAULT_ACC[0];
         let processedSheetsStore = {};
-        let currentPinnedPlayer = null; // 当前被置顶的选手名称
+        let currentPinnedPlayer = null;
+
+        // 安全获取 LocalStorage
+        function safeStorageGet(key) {
+            try { return localStorage.getItem(key); } catch(e) { return null; }
+        }
+
+        // 安全写入 LocalStorage
+        function safeStorageSet(key, val) {
+            try {
+                localStorage.setItem(key, val);
+            } catch(e) {
+                alert("⚠️ 本地存储空间已满或浏览器禁用了 LocalStorage，数据无法长期保存。建议点击【清空当前数据】释放空间。");
+            }
+        }
 
         function getAccounts() {
             try {
-                const list = JSON.parse(localStorage.getItem('valo_acc_list'));
+                const list = JSON.parse(safeStorageGet('valo_acc_list'));
                 if (Array.isArray(list) && list.length > 0) return list;
             } catch(e){}
-            localStorage.setItem('valo_acc_list', JSON.stringify(DEFAULT_ACC));
+            safeStorageSet('valo_acc_list', JSON.stringify(DEFAULT_ACC));
             return DEFAULT_ACC;
         }
 
         function initUI() {
             const accs = getAccounts();
             if (!accs.includes(currentAccount)) currentAccount = accs[0];
-            localStorage.setItem('valo_active_acc', currentAccount);
+            safeStorageSet('valo_active_acc', currentAccount);
 
             document.getElementById('accountSelect').innerHTML = accs.map(a => `<option value="${a}" ${a === currentAccount ? 'selected' : ''}>${a}</option>`).join('');
             document.getElementById('currentAccountDisplay').innerText = currentAccount;
 
             setupDragAndDrop();
 
-            const cachedSheetsData = localStorage.getItem('valo_processed_sheets_' + currentAccount);
-            const activeSheetName = localStorage.getItem('valo_active_sheet_' + currentAccount);
+            const cachedSheetsData = safeStorageGet('valo_processed_sheets_' + currentAccount);
+            const activeSheetName = safeStorageGet('valo_active_sheet_' + currentAccount);
 
             if (cachedSheetsData) {
                 try {
@@ -243,26 +258,38 @@
             });
             dz.addEventListener('drop', (e) => {
                 const dt = e.dataTransfer;
-                if (dt.files.length) processFile(dt.files[0]);
+                if (dt.files && dt.files.length > 0) processFile(dt.files[0]);
             });
         }
 
-        function switchAccount(val) { currentAccount = val; localStorage.setItem('valo_active_acc', currentAccount); initUI(); }
+        function triggerFileInput() {
+            document.getElementById('fileInput').click();
+        }
+
+        function switchAccount(val) { 
+            currentAccount = val; 
+            safeStorageSet('valo_active_acc', currentAccount); 
+            initUI(); 
+        }
+
         function createNewAccount() {
             const name = prompt("请输入新建账号/战队名称：");
             if (!name || !name.trim()) return;
+            const cleanName = name.trim();
             const accs = getAccounts();
-            if (!accs.includes(name.trim())) {
-                accs.push(name.trim());
-                localStorage.setItem('valo_acc_list', JSON.stringify(accs));
+            if (!accs.includes(cleanName)) {
+                accs.push(cleanName);
+                safeStorageSet('valo_acc_list', JSON.stringify(accs));
             }
-            switchAccount(name.trim());
+            switchAccount(cleanName);
         }
 
         function clearCurrentAccountData() {
             if (confirm(`确认清空「${currentAccount}」下的所有战绩缓存？`)) {
-                localStorage.removeItem('valo_processed_sheets_' + currentAccount);
-                localStorage.removeItem('valo_active_sheet_' + currentAccount);
+                try {
+                    localStorage.removeItem('valo_processed_sheets_' + currentAccount);
+                    localStorage.removeItem('valo_active_sheet_' + currentAccount);
+                } catch(e) {}
                 processedSheetsStore = {};
                 document.getElementById('sheetBar').style.display = 'none';
                 document.getElementById('searchPanel').style.display = 'none';
@@ -272,15 +299,18 @@
 
         function handleFileSelect(evt) {
             const file = evt.target.files[0];
-            if (file) processFile(file);
+            if (file) {
+                processFile(file);
+            }
+            // 清空 value，确保选择同名文件时能再次触发 change 事件
+            evt.target.value = '';
         }
 
-        // 保留接入按钮，点击后显示暂未开通
         function fetchFromVlrOrHaojiao(sourceType) {
             alert("暂时未开通该功能");
         }
 
-        // 🛡️ 完美精确解析引擎
+        // 解析表格数据
         function absoluteSafeParse(rows) {
             if (!rows || !Array.isArray(rows) || rows.length < 2) return null;
             let headerIdx = -1;
@@ -350,6 +380,12 @@
         }
 
         function processFile(file) {
+            // 检查 XLSX 依赖组件是否已正确加载
+            if (typeof XLSX === 'undefined') {
+                alert("❌ 无法解析 Excel 文件：Excel 解析组件（XLSX）未成功加载。请检查网络连接是否正常，或稍后刷新重试。");
+                return;
+            }
+
             document.getElementById('fileInfo').innerText = "读取中: " + file.name;
             const reader = new FileReader();
 
@@ -374,18 +410,28 @@
                     });
 
                     if (validSheets.length > 0) {
-                        try { localStorage.setItem('valo_processed_sheets_' + currentAccount, JSON.stringify(processedSheetsStore)); } catch (e) {}
+                        safeStorageSet('valo_processed_sheets_' + currentAccount, JSON.stringify(processedSheetsStore));
                         const defaultSheet = validSheets[0];
-                        localStorage.setItem('valo_active_sheet_' + currentAccount, defaultSheet);
+                        safeStorageSet('valo_active_sheet_' + currentAccount, defaultSheet);
                         currentPinnedPlayer = null;
                         renderSheetBar(validSheets, defaultSheet);
                         render(processedSheetsStore[defaultSheet]);
                         document.getElementById('fileInfo').innerText = "表格加载成功 ✅";
                     } else {
-                        alert("未能识别表格中的有效战绩。");
+                        alert("⚠️ 未能在此表格中识别到有效选手数据，请检查表格表头是否符合规范（需包含：选手/姓名、击杀/K、死亡/D等字段）。");
+                        document.getElementById('fileInfo').innerText = "解析失败，无有效数据";
                     }
-                } catch(err) { alert("文件解析遇到异常。"); }
+                } catch(err) { 
+                    console.error(err);
+                    alert("❌ 文件解析发生错误，请确认文件未损坏或密码加密。"); 
+                    document.getElementById('fileInfo').innerText = "解析异常";
+                }
             };
+
+            reader.onerror = function() {
+                alert("❌ 读取本地文件失败，请检查文件权限。");
+            };
+
             reader.readAsArrayBuffer(file);
         }
 
@@ -397,16 +443,15 @@
 
         function onSheetDropdownChange(sheetName) {
             if (processedSheetsStore && processedSheetsStore[sheetName]) {
-                localStorage.setItem('valo_active_sheet_' + currentAccount, sheetName);
+                safeStorageSet('valo_active_sheet_' + currentAccount, sheetName);
                 currentPinnedPlayer = null;
                 render(processedSheetsStore[sheetName]);
                 document.getElementById('fileInfo').innerText = "当前显示: " + sheetName + " ✅";
             }
         }
 
-        // 🧠 手动查询并置顶选手功能
         function pinSearchedPlayer() {
-            const activeSheetName = localStorage.getItem('valo_active_sheet_' + currentAccount);
+            const activeSheetName = safeStorageGet('valo_active_sheet_' + currentAccount);
             const currentData = processedSheetsStore[activeSheetName];
             if (!currentData) {
                 alert("请先读取或生成有效的选手数据！");
@@ -433,13 +478,12 @@
         function resetPlayerOrder() {
             currentPinnedPlayer = null;
             document.getElementById('playerSearchInput').value = '';
-            const activeSheetName = localStorage.getItem('valo_active_sheet_' + currentAccount);
+            const activeSheetName = safeStorageGet('valo_active_sheet_' + currentAccount);
             if (processedSheetsStore[activeSheetName]) {
                 render(processedSheetsStore[activeSheetName]);
             }
         }
 
-        // 🧠 职业级赛训专家诊断算法
         function generateAdvancedDiagnostics(p) {
             const matches = p.matches || [];
             if (matches.length === 0) return { positionRec: "缺乏数据", agentDiff: "无", fkfdAdvice: "无" };
@@ -507,7 +551,6 @@
 
             let playerKeys = Object.keys(playersMap);
 
-            // 如果设置了置顶选手，重新排序 key 数组
             if (currentPinnedPlayer && playersMap[currentPinnedPlayer]) {
                 playerKeys = playerKeys.filter(k => k !== currentPinnedPlayer);
                 playerKeys.unshift(currentPinnedPlayer);
@@ -647,7 +690,7 @@
                 aggView.style.display = 'none';
                 matchView.style.display = 'block';
                 aggBtn.classList.remove('active');
-                matchBtn.classList.add('active');
+                matchBtn.classList.active;
             }
         }
 
