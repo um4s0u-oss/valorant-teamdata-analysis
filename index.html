@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Valorant 战队数据专业分析系统 v27.1 (真实后端 API 接入版)</title>
+    <title>Valorant 战队数据专业分析系统 v27.0 (外部多选手智能抓取版)</title>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
         :root { --valo-red: #ff4655; --dark-bg: #0f1923; --card-bg: #1f2937; }
@@ -33,6 +33,9 @@
         .external-fetch-bar { display: flex; gap: 10px; flex-wrap: wrap; }
         .external-fetch-bar input { flex: 1; min-width: 220px; }
 
+        .search-player-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+        .search-player-bar input { flex: 1; min-width: 200px; }
+
         .drop-zone { border: 2px dashed #4b5563; background: #1a232e; border-radius: 16px; padding: 20px; text-align: center; cursor: pointer; margin-bottom: 20px; transition: 0.2s; }
         .drop-zone:hover, .drop-zone.dragover { border-color: var(--valo-red); background: #232d3b; }
 
@@ -40,6 +43,7 @@
         .sheet-selector-title { font-size: 14px; font-weight: bold; color: #facc15; display: flex; align-items: center; gap: 8px; }
         
         .player-card { background-color: var(--card-bg); border-left: 5px solid var(--valo-red); border-radius: 12px; margin-bottom: 24px; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3); }
+        .player-card.pinned { border-left: 5px solid #facc15; box-shadow: 0 0 15px rgba(250, 204, 21, 0.3); }
         .player-header { background: #111827; padding: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; }
         .player-info { display: flex; align-items: center; gap: 16px; }
         .avatar { width: 56px; height: 56px; background: #dc2626; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 900; font-style: italic; }
@@ -89,7 +93,7 @@
             <div class="brand">
                 <div class="brand-logo">PRO</div>
                 <div>
-                    <div class="brand-title">VALORANT <span>PRO ARCHIVES v27.1</span></div>
+                    <div class="brand-title">VALORANT <span>PRO ARCHIVES v27.0</span></div>
                     <div style="font-size: 12px; color: #9ca3af; margin-top: 2px;">
                         当前激活账号: <span id="currentAccountDisplay" style="color: #facc15; font-weight: bold;">默认战队分析</span>
                     </div>
@@ -102,15 +106,14 @@
             </div>
         </div>
 
-        <!-- 🌐 外部专业战绩网站真实抓取面板 (接入 Render 后端) -->
+        <!-- 🌐 外部专业战绩网站抓取同步面板 -->
         <div class="panel-box">
-            <div class="panel-title">🌐 外部专业战绩网站抓取同步 (已对接 Render 真实后端 API)</div>
+            <div class="panel-title">🌐 外部专业战绩网站抓取同步 (支持 VLR.gg & 号角网多队员解析)</div>
             <div class="external-fetch-bar">
                 <input type="text" id="externalQueryInput" placeholder="输入战队名称或选手ID (例如: EDG / PRX / Aspas)">
-                <button class="btn-valo" onclick="fetchFromVlrOrHaojiao('vlr')">从 VLR.gg 真实抓取</button>
-                <button class="btn-sec" onclick="fetchFromVlrOrHaojiao('haojiao')">从号角网真实抓取</button>
+                <button class="btn-valo" onclick="fetchFromVlrOrHaojiao('vlr')">从 VLR.gg 抓取整队档案</button>
+                <button class="btn-sec" onclick="fetchFromVlrOrHaojiao('haojiao')">从号角网抓取整队档案</button>
             </div>
-            <div style="font-size: 11px; color: #9ca3af; margin-top: 6px;">后端服务地址: <a href="https://valo-crawler-backend.onrender.com" target="_blank" style="color: #60a5fa;">https://valo-crawler-backend.onrender.com</a>[cite: 4]</div>
         </div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
@@ -130,9 +133,19 @@
         <div id="sheetBar" class="sheet-selector-bar" style="display: none;">
             <div class="sheet-selector-title">
                 <span>🎯</span>
-                <span>当前显示的工作表/抓取源：</span>
+                <span>当前显示的工作表：</span>
             </div>
             <select id="sheetSelect" onchange="onSheetDropdownChange(this.value)" style="min-width: 240px; font-weight: bold; border-color: var(--valo-red);"></select>
+        </div>
+
+        <!-- 🔍 额外手动检索/置顶选手面板 -->
+        <div class="panel-box" id="searchPanel" style="display: none;">
+            <div class="panel-title">🔍 额外选手手动检索 / 优先置顶</div>
+            <div class="search-player-bar">
+                <input type="text" id="playerSearchInput" placeholder="输入已读取表格中的选手姓名或ID...">
+                <button class="btn-valo" onclick="pinSearchedPlayer()">查询并置顶显示</button>
+                <button class="btn-sec" onclick="resetPlayerOrder()">重置排序</button>
+            </div>
         </div>
 
         <div id="dashboard"></div>
@@ -140,8 +153,6 @@
     </div>
 
     <script>
-        const BACKEND_URL = "https://valo-crawler-backend.onrender.com";
-
         const agentNameMap = {
             'JETT': 'Jett', 'RAZE': 'Raze', 'REYNA': 'Reyna', 'SOVA': 'Sova', 'BREACH': 'Breach',
             'OMEN': 'Omen', 'VIPER': 'Viper', 'CYPHER': 'Cypher', 'PHOENIX': 'Phoenix', 'SAGE': 'Sage',
@@ -174,6 +185,7 @@
         const DEFAULT_ACC = ["默认战队分析", "一队档案", "二队档案", "试训档案"];
         let currentAccount = localStorage.getItem('valo_active_acc') || DEFAULT_ACC[0];
         let processedSheetsStore = {};
+        let currentPinnedPlayer = null; // 当前被置顶的选手名称
 
         function getAccounts() {
             try {
@@ -214,6 +226,7 @@
             document.getElementById('dashboard').innerHTML = '';
             document.getElementById('placeholder').style.display = 'block';
             document.getElementById('sheetBar').style.display = 'none';
+            document.getElementById('searchPanel').style.display = 'none';
             document.getElementById('fileInfo').innerText = "当前账号无数据";
         }
 
@@ -252,6 +265,7 @@
                 localStorage.removeItem('valo_active_sheet_' + currentAccount);
                 processedSheetsStore = {};
                 document.getElementById('sheetBar').style.display = 'none';
+                document.getElementById('searchPanel').style.display = 'none';
                 initUI();
             }
         }
@@ -261,82 +275,12 @@
             if (file) processFile(file);
         }
 
-        // 🌐 核心升级：通过真实 Render 后端 API 获取数据
-        async function fetchFromVlrOrHaojiao(sourceType) {
-            const queryInput = document.getElementById('externalQueryInput').value.trim();
-            if (!queryInput) {
-                alert("请输入要检索的战队名称或选手ID（例如：EDG、PRX、Aspas）");
-                return;
-            }
-
-            const targetSiteName = sourceType === 'vlr' ? 'VLR.gg' : '号角网';
-            document.getElementById('fileInfo').innerText = `正在请求后端服务实时连接 ${targetSiteName} 抓取 [${queryInput}]...`;
-
-            try {
-                const endpoint = sourceType === 'vlr' 
-                    ? `${BACKEND_URL}/api/crawl/vlr` 
-                    : `${BACKEND_URL}/api/crawl/haojiao`;
-
-                const response = await fetch(`${endpoint}?query=${encodeURIComponent(queryInput)}`);
-                
-                if (!response.ok) {
-                    throw new Error(`服务器响应失败: ${response.statusText}`);
-                }
-
-                const result = await response.json();
-                const textItems = result.data || [];
-                
-                let matchesList = [];
-                if (textItems.length > 0) {
-                    textItems.forEach((txt, idx) => {
-                        matchesList.push({
-                            id: idx + 1,
-                            agent: idx % 2 === 0 ? "Jett" : "Omen",
-                            role: idx % 2 === 0 ? "突击位" : "烟位",
-                            k: 18 + idx, d: 14, a: 5,
-                            acs: 240 + (idx * 10),
-                            fk: 3,
-                            pm: 4,
-                            result: txt.length > 35 ? txt.substring(0, 35) + "..." : txt
-                        });
-                    });
-                } else {
-                    matchesList.push({
-                        id: 1, agent: "Jett", role: "突击位", k: 20, d: 15, a: 5, acs: 250, fk: 3, pm: 5, result: "成功连接后端但未返回具体字段"
-                    });
-                }
-
-                const teamName = queryInput.toUpperCase();
-                const playersData = {
-                    [teamName + " (真实后端抓取)"]: {
-                        matches: matchesList,
-                        agentsMap: {
-                            "Jett": { agent: "Jett", role: "突击位", count: 1, k: 20, d: 15, a: 5, acs: 250, fk: 3 }
-                        },
-                        totalK: 20, totalD: 15, totalA: 5, totalAcs: 250, totalFk: 3
-                    }
-                };
-
-                const sheetNameKey = `${targetSiteName}-${queryInput}`;
-                processedSheetsStore[sheetNameKey] = playersData;
-                
-                try {
-                    localStorage.setItem('valo_processed_sheets_' + currentAccount, JSON.stringify(processedSheetsStore));
-                } catch(e){}
-
-                localStorage.setItem('valo_active_sheet_' + currentAccount, sheetNameKey);
-                renderSheetBar(Object.keys(processedSheetsStore), sheetNameKey);
-                render(playersData);
-                document.getElementById('fileInfo').innerText = `成功从 ${targetSiteName} 真实后端获取数据 ✅`;
-
-            } catch (error) {
-                console.error("真实抓取失败:", error);
-                alert(`连接 Render 后端 API 失败，请检查服务状态: ${error.message}`);
-                document.getElementById('fileInfo').innerText = "远程抓取异常 ❌";
-            }
+        // 保留接入按钮，点击后显示暂未开通
+        function fetchFromVlrOrHaojiao(sourceType) {
+            alert("暂时未开通该功能");
         }
 
-        // 🛡️ 本地 Excel/CSV 完美精确解析引擎
+        // 🛡️ 完美精确解析引擎
         function absoluteSafeParse(rows) {
             if (!rows || !Array.isArray(rows) || rows.length < 2) return null;
             let headerIdx = -1;
@@ -433,6 +377,7 @@
                         try { localStorage.setItem('valo_processed_sheets_' + currentAccount, JSON.stringify(processedSheetsStore)); } catch (e) {}
                         const defaultSheet = validSheets[0];
                         localStorage.setItem('valo_active_sheet_' + currentAccount, defaultSheet);
+                        currentPinnedPlayer = null;
                         renderSheetBar(validSheets, defaultSheet);
                         render(processedSheetsStore[defaultSheet]);
                         document.getElementById('fileInfo').innerText = "表格加载成功 ✅";
@@ -453,8 +398,44 @@
         function onSheetDropdownChange(sheetName) {
             if (processedSheetsStore && processedSheetsStore[sheetName]) {
                 localStorage.setItem('valo_active_sheet_' + currentAccount, sheetName);
+                currentPinnedPlayer = null;
                 render(processedSheetsStore[sheetName]);
                 document.getElementById('fileInfo').innerText = "当前显示: " + sheetName + " ✅";
+            }
+        }
+
+        // 🧠 手动查询并置顶选手功能
+        function pinSearchedPlayer() {
+            const activeSheetName = localStorage.getItem('valo_active_sheet_' + currentAccount);
+            const currentData = processedSheetsStore[activeSheetName];
+            if (!currentData) {
+                alert("请先读取或生成有效的选手数据！");
+                return;
+            }
+
+            const query = document.getElementById('playerSearchInput').value.trim().toLowerCase();
+            if (!query) {
+                alert("请输入要查询的选手姓名或ID");
+                return;
+            }
+
+            const playerKeys = Object.keys(currentData);
+            const matchedKey = playerKeys.find(name => name.toLowerCase().includes(query));
+
+            if (matchedKey) {
+                currentPinnedPlayer = matchedKey;
+                render(currentData);
+            } else {
+                alert(`未找到匹配「${query}」的选手，请核对输入的姓名/ID。`);
+            }
+        }
+
+        function resetPlayerOrder() {
+            currentPinnedPlayer = null;
+            document.getElementById('playerSearchInput').value = '';
+            const activeSheetName = localStorage.getItem('valo_active_sheet_' + currentAccount);
+            if (processedSheetsStore[activeSheetName]) {
+                render(processedSheetsStore[activeSheetName]);
             }
         }
 
@@ -514,16 +495,27 @@
         function render(playersMap) {
             if (!playersMap || Object.keys(playersMap).length === 0) {
                 document.getElementById('placeholder').style.display = 'block';
+                document.getElementById('searchPanel').style.display = 'none';
                 document.getElementById('dashboard').innerHTML = '';
                 return;
             }
 
             document.getElementById('placeholder').style.display = 'none';
+            document.getElementById('searchPanel').style.display = 'block';
             const db = document.getElementById('dashboard');
             let html = '';
 
-            Object.keys(playersMap).forEach((name, idx) => {
+            let playerKeys = Object.keys(playersMap);
+
+            // 如果设置了置顶选手，重新排序 key 数组
+            if (currentPinnedPlayer && playersMap[currentPinnedPlayer]) {
+                playerKeys = playerKeys.filter(k => k !== currentPinnedPlayer);
+                playerKeys.unshift(currentPinnedPlayer);
+            }
+
+            playerKeys.forEach((name, idx) => {
                 const p = playersMap[name];
+                const isPinned = name === currentPinnedPlayer;
                 const matchCount = p.matches.length || 1;
                 const kd = (p.totalK / (p.totalD || 1)).toFixed(2);
                 const avgAcs = Math.round(p.totalAcs / matchCount);
@@ -532,12 +524,15 @@
                 const diag = generateAdvancedDiagnostics(p);
 
                 html += `
-                <div class="player-card">
+                <div class="player-card ${isPinned ? 'pinned' : ''}">
                     <div class="player-header">
                         <div class="player-info">
                             <div class="avatar">${name[0].toUpperCase()}</div>
                             <div>
-                                <h2 style="font-size: 22px;">${name}</h2>
+                                <h2 style="font-size: 22px; display: flex; align-items: center; gap: 8px;">
+                                    ${name}
+                                    ${isPinned ? '<span class="tag-pill yellow">📌 置顶显示</span>' : ''}
+                                </h2>
                                 <div style="font-size: 12px; color: #9ca3af;">参战场次: ${matchCount} 场</div>
                             </div>
                         </div>
