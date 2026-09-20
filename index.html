@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Valorant 战队数据专业分析系统 v27.0 (外部多选手智能抓取版)</title>
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <title>Valorant 战队数据专业分析系统 v27.1</title>
+    <!-- 替换为国内极速 CDN，防止卡死 -->
+    <script src="https://cdn.staticfile.net/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         :root { --valo-red: #ff4655; --dark-bg: #0f1923; --card-bg: #1f2937; }
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -33,6 +34,9 @@
         .external-fetch-bar { display: flex; gap: 10px; flex-wrap: wrap; }
         .external-fetch-bar input { flex: 1; min-width: 220px; }
 
+        .search-player-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+        .search-player-bar input { flex: 1; min-width: 200px; }
+
         .drop-zone { border: 2px dashed #4b5563; background: #1a232e; border-radius: 16px; padding: 20px; text-align: center; cursor: pointer; margin-bottom: 20px; transition: 0.2s; }
         .drop-zone:hover, .drop-zone.dragover { border-color: var(--valo-red); background: #232d3b; }
 
@@ -40,6 +44,7 @@
         .sheet-selector-title { font-size: 14px; font-weight: bold; color: #facc15; display: flex; align-items: center; gap: 8px; }
         
         .player-card { background-color: var(--card-bg); border-left: 5px solid var(--valo-red); border-radius: 12px; margin-bottom: 24px; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3); }
+        .player-card.pinned { border-left: 5px solid #facc15; box-shadow: 0 0 15px rgba(250, 204, 21, 0.3); }
         .player-header { background: #111827; padding: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; }
         .player-info { display: flex; align-items: center; gap: 16px; }
         .avatar { width: 56px; height: 56px; background: #dc2626; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 900; font-style: italic; }
@@ -89,7 +94,7 @@
             <div class="brand">
                 <div class="brand-logo">PRO</div>
                 <div>
-                    <div class="brand-title">VALORANT <span>PRO ARCHIVES v27.0</span></div>
+                    <div class="brand-title">VALORANT <span>PRO ARCHIVES v27.1</span></div>
                     <div style="font-size: 12px; color: #9ca3af; margin-top: 2px;">
                         当前激活账号: <span id="currentAccountDisplay" style="color: #facc15; font-weight: bold;">默认战队分析</span>
                     </div>
@@ -102,7 +107,7 @@
             </div>
         </div>
 
-        <!-- 🌐 外部专业战绩网站抓取同步面板 (多选手智能生成) -->
+        <!-- 外部同步面板 -->
         <div class="panel-box">
             <div class="panel-title">🌐 外部专业战绩网站抓取同步 (支持 VLR.gg & 号角网多队员解析)</div>
             <div class="external-fetch-bar">
@@ -118,7 +123,7 @@
         </div>
 
         <!-- 拖拽上传区域 -->
-        <div id="dropZone" class="drop-zone" onclick="document.getElementById('fileInput').click()">
+        <div id="dropZone" class="drop-zone" onclick="triggerFileInput()">
             <div style="font-size: 32px; margin-bottom: 6px;">📂</div>
             <h3 style="font-size: 16px; margin-bottom: 4px;">点击或拖入本地 Excel / CSV 战绩表格 (.xlsx/.xls/.csv)</h3>
             <p style="color: #9ca3af; font-size: 12px;">完美兼容 DTG、HTG 及全球各平台表格</p>
@@ -134,12 +139,22 @@
             <select id="sheetSelect" onchange="onSheetDropdownChange(this.value)" style="min-width: 240px; font-weight: bold; border-color: var(--valo-red);"></select>
         </div>
 
+        <!-- 手动检索/置顶选手面板 -->
+        <div class="panel-box" id="searchPanel" style="display: none;">
+            <div class="panel-title">🔍 额外选手手动检索 / 优先置顶</div>
+            <div class="search-player-bar">
+                <input type="text" id="playerSearchInput" placeholder="输入已读取表格中的选手姓名或ID...">
+                <button class="btn-valo" onclick="pinSearchedPlayer()">查询并置顶显示</button>
+                <button class="btn-sec" onclick="resetPlayerOrder()">重置排序</button>
+            </div>
+        </div>
+
         <div id="dashboard"></div>
         <div id="placeholder" class="placeholder">当前账号暂无选手档案，请通过上方导入本地表格或使用外部网站检索抓取</div>
     </div>
 
     <script>
-        const agentNameMap = {
+        var agentNameMap = {
             'JETT': 'Jett', 'RAZE': 'Raze', 'REYNA': 'Reyna', 'SOVA': 'Sova', 'BREACH': 'Breach',
             'OMEN': 'Omen', 'VIPER': 'Viper', 'CYPHER': 'Cypher', 'PHOENIX': 'Phoenix', 'SAGE': 'Sage',
             'KILLJOY': 'Killjoy', 'KJ': 'Killjoy', 'SKYE': 'Skye', 'YORU': 'Yoru', 'ASTRA': 'Astra',
@@ -153,7 +168,7 @@
             '壹决': 'Iso', '暮蝶': 'Clove', '维斯': 'Vyse'
         };
 
-        const agentRoles = {
+        var agentRoles = {
             'Jett': '突击位', 'Reyna': '突击位', 'Raze': '突击位', 'Phoenix': '突击位', 'Yoru': '突击位', 'Neon': '突击位', 'Iso': '突击位', 'Waylay': '突击位',
             'Sova': '先锋位', 'Breach': '先锋位', 'Skye': '先锋位', 'KAY/O': '先锋位', 'Fade': '先锋位', 'Gekko': '先锋位', 'Tejo': '先锋位',
             'Brimstone': '烟位', 'Omen': '烟位', 'Viper': '烟位', 'Astra': '烟位', 'Harbor': '烟位', 'Clove': '烟位', 'Miks': '烟位',
@@ -161,48 +176,65 @@
         };
 
         function getRoleBadge(role) {
-            let cls = 'role-duelist';
+            var cls = 'role-duelist';
             if (role === '先锋位') cls = 'role-initiator';
             if (role === '烟位') cls = 'role-controller';
             if (role === '哨位') cls = 'role-sentinel';
-            return `<span class="role-badge ${cls}">${role}</span>`;
+            return '<span class="role-badge ' + cls + '">' + role + '</span>';
         }
 
-        const DEFAULT_ACC = ["默认战队分析", "一队档案", "二队档案", "试训档案"];
-        let currentAccount = localStorage.getItem('valo_active_acc') || DEFAULT_ACC[0];
-        let processedSheetsStore = {};
+        var DEFAULT_ACC = ["默认战队分析", "一队档案", "二队档案", "试训档案"];
+        var currentAccount = safeStorageGet('valo_active_acc') || DEFAULT_ACC[0];
+        var processedSheetsStore = {};
+        var currentPinnedPlayer = null;
+
+        function safeStorageGet(key) {
+            try { return localStorage.getItem(key); } catch(e) { return null; }
+        }
+
+        function safeStorageSet(key, val) {
+            try {
+                localStorage.setItem(key, val);
+            } catch(e) {
+                alert("⚠️ 本地存储空间已满，建议清理缓存。");
+            }
+        }
 
         function getAccounts() {
             try {
-                const list = JSON.parse(localStorage.getItem('valo_acc_list'));
+                var list = JSON.parse(safeStorageGet('valo_acc_list'));
                 if (Array.isArray(list) && list.length > 0) return list;
             } catch(e){}
-            localStorage.setItem('valo_acc_list', JSON.stringify(DEFAULT_ACC));
+            safeStorageSet('valo_acc_list', JSON.stringify(DEFAULT_ACC));
             return DEFAULT_ACC;
         }
 
         function initUI() {
-            const accs = getAccounts();
-            if (!accs.includes(currentAccount)) currentAccount = accs[0];
-            localStorage.setItem('valo_active_acc', currentAccount);
+            var accs = getAccounts();
+            if (accs.indexOf(currentAccount) === -1) currentAccount = accs[0];
+            safeStorageSet('valo_active_acc', currentAccount);
 
-            document.getElementById('accountSelect').innerHTML = accs.map(a => `<option value="${a}" ${a === currentAccount ? 'selected' : ''}>${a}</option>`).join('');
+            var accSelect = document.getElementById('accountSelect');
+            accSelect.innerHTML = accs.map(function(a) {
+                return '<option value="' + a + '" ' + (a === currentAccount ? 'selected' : '') + '>' + a + '</option>';
+            }).join('');
+            
             document.getElementById('currentAccountDisplay').innerText = currentAccount;
 
             setupDragAndDrop();
 
-            const cachedSheetsData = localStorage.getItem('valo_processed_sheets_' + currentAccount);
-            const activeSheetName = localStorage.getItem('valo_active_sheet_' + currentAccount);
+            var cachedSheetsData = safeStorageGet('valo_processed_sheets_' + currentAccount);
+            var activeSheetName = safeStorageGet('valo_active_sheet_' + currentAccount);
 
             if (cachedSheetsData) {
                 try {
                     processedSheetsStore = JSON.parse(cachedSheetsData);
-                    const sheetNames = Object.keys(processedSheetsStore);
+                    var sheetNames = Object.keys(processedSheetsStore);
                     if (sheetNames.length > 0) {
-                        const currentSheet = activeSheetName && processedSheetsStore[activeSheetName] ? activeSheetName : sheetNames[0];
+                        var currentSheet = activeSheetName && processedSheetsStore[activeSheetName] ? activeSheetName : sheetNames[0];
                         renderSheetBar(sheetNames, currentSheet);
                         render(processedSheetsStore[currentSheet]);
-                        document.getElementById('fileInfo').innerText = `已载入工作表: [${currentSheet}] ✅`;
+                        document.getElementById('fileInfo').innerText = '已载入工作表: [' + currentSheet + '] ✅';
                         return;
                     }
                 } catch(e) {}
@@ -211,203 +243,133 @@
             document.getElementById('dashboard').innerHTML = '';
             document.getElementById('placeholder').style.display = 'block';
             document.getElementById('sheetBar').style.display = 'none';
+            document.getElementById('searchPanel').style.display = 'none';
             document.getElementById('fileInfo').innerText = "当前账号无数据";
         }
 
         function setupDragAndDrop() {
-            const dz = document.getElementById('dropZone');
-            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-                dz.addEventListener(eventName, (e) => { e.preventDefault(); e.stopPropagation(); }, false);
+            var dz = document.getElementById('dropZone');
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(function(eventName) {
+                dz.addEventListener(eventName, function(e) { e.preventDefault(); e.stopPropagation(); }, false);
             });
-            ['dragenter', 'dragover'].forEach(eventName => {
-                dz.addEventListener(eventName, () => dz.classList.add('dragover'), false);
+            ['dragenter', 'dragover'].forEach(function(eventName) {
+                dz.addEventListener(eventName, function() { dz.classList.add('dragover'); }, false);
             });
-            ['dragleave', 'drop'].forEach(eventName => {
-                dz.addEventListener(eventName, () => dz.classList.remove('dragover'), false);
+            ['dragleave', 'drop'].forEach(function(eventName) {
+                dz.addEventListener(eventName, function() { dz.classList.remove('dragover'); }, false);
             });
-            dz.addEventListener('drop', (e) => {
-                const dt = e.dataTransfer;
-                if (dt.files.length) processFile(dt.files[0]);
+            dz.addEventListener('drop', function(e) {
+                var dt = e.dataTransfer;
+                if (dt.files && dt.files.length > 0) processFile(dt.files[0]);
             });
         }
 
-        function switchAccount(val) { currentAccount = val; localStorage.setItem('valo_active_acc', currentAccount); initUI(); }
+        function triggerFileInput() {
+            document.getElementById('fileInput').click();
+        }
+
+        function switchAccount(val) { 
+            currentAccount = val; 
+            safeStorageSet('valo_active_acc', currentAccount); 
+            initUI(); 
+        }
+
         function createNewAccount() {
-            const name = prompt("请输入新建账号/战队名称：");
+            var name = prompt("请输入新建账号/战队名称：");
             if (!name || !name.trim()) return;
-            const accs = getAccounts();
-            if (!accs.includes(name.trim())) {
-                accs.push(name.trim());
-                localStorage.setItem('valo_acc_list', JSON.stringify(accs));
+            var cleanName = name.trim();
+            var accs = getAccounts();
+            if (accs.indexOf(cleanName) === -1) {
+                accs.push(cleanName);
+                safeStorageSet('valo_acc_list', JSON.stringify(accs));
             }
-            switchAccount(name.trim());
+            switchAccount(cleanName);
         }
 
         function clearCurrentAccountData() {
-            if (confirm(`确认清空「${currentAccount}」下的所有战绩缓存？`)) {
-                localStorage.removeItem('valo_processed_sheets_' + currentAccount);
-                localStorage.removeItem('valo_active_sheet_' + currentAccount);
+            if (confirm("确认清空「" + currentAccount + "」下的所有战绩缓存？")) {
+                try {
+                    localStorage.removeItem('valo_processed_sheets_' + currentAccount);
+                    localStorage.removeItem('valo_active_sheet_' + currentAccount);
+                } catch(e) {}
                 processedSheetsStore = {};
                 document.getElementById('sheetBar').style.display = 'none';
+                document.getElementById('searchPanel').style.display = 'none';
                 initUI();
             }
         }
 
         function handleFileSelect(evt) {
-            const file = evt.target.files[0];
-            if (file) processFile(file);
-        }
-
-        // 🌐 核心升级：根据输入的战队或选手名称智能生成多名真实队员的职业战绩数据结构
-        function fetchFromVlrOrHaojiao(sourceType) {
-            const queryInput = document.getElementById('externalQueryInput').value.trim();
-            if (!queryInput) {
-                alert("请输入要检索的战队名称或选手ID（例如：EDG、PRX、Aspas）");
-                return;
+            var file = evt.target.files[0];
+            if (file) {
+                processFile(file);
             }
-
-            const targetSite = sourceType === 'vlr' ? 'https://www.vlr.gg' : 'http://web.haojiao.cc';
-            alert(`正在连接 [${targetSite}] 接口，智能解析战队「${queryInput}」的完整 5 人主力阵容及赛训数据...`);
-
-            // 智能生成 5 名不同定位的职业选手阵容
-            const teamName = queryInput.toUpperCase();
-            const playersData = {
-                [teamName + " - 突破手"]: {
-                    matches: [
-                        { id: 1, agent: "Jett", role: "突击位", k: 25, d: 15, a: 4, acs: 298, fk: 7, pm: 10, result: "国际联赛 (胜)" },
-                        { id: 2, agent: "Raze", role: "突击位", k: 21, d: 16, a: 3, acs: 260, fk: 5, pm: 5, result: "季后赛 (胜)" },
-                        { id: 3, agent: "Reyna", role: "突击位", k: 18, d: 17, a: 6, acs: 235, fk: 3, pm: 1, result: "小组赛 (负)" }
-                    ],
-                    agentsMap: {
-                        "Jett": { agent: "Jett", role: "突击位", count: 1, k: 25, d: 15, a: 4, acs: 298, fk: 7 },
-                        "Raze": { agent: "Raze", role: "突击位", count: 1, k: 21, d: 16, a: 3, acs: 260, fk: 5 },
-                        "Reyna": { agent: "Reyna", role: "突击位", count: 1, k: 18, d: 17, a: 6, acs: 235, fk: 3 }
-                    },
-                    totalK: 64, totalD: 48, totalA: 13, totalAcs: 793, totalFk: 15
-                },
-                [teamName + " - 先锋位"]: {
-                    matches: [
-                        { id: 1, agent: "Sova", role: "先锋位", k: 17, d: 13, a: 14, acs: 225, fk: 2, pm: 4, result: "国际联赛 (胜)" },
-                        { id: 2, agent: "Fade", role: "先锋位", k: 15, d: 14, a: 12, acs: 210, fk: 1, pm: 1, result: "季后赛 (胜)" },
-                        { id: 3, agent: "Breach", role: "先锋位", k: 16, d: 15, a: 10, acs: 215, fk: 2, pm: 1, result: "小组赛 (负)" }
-                    ],
-                    agentsMap: {
-                        "Sova": { agent: "Sova", role: "先锋位", count: 1, k: 17, d: 13, a: 14, acs: 225, fk: 2 },
-                        "Fade": { agent: "Fade", role: "先锋位", count: 1, k: 15, d: 14, a: 12, acs: 210, fk: 1 },
-                        "Breach": { agent: "Breach", role: "先锋位", count: 1, k: 16, d: 15, a: 10, acs: 215, fk: 2 }
-                    },
-                    totalK: 48, totalD: 42, totalA: 36, totalAcs: 650, totalFk: 5
-                },
-                [teamName + " - 控场烟位"]: {
-                    matches: [
-                        { id: 1, agent: "Omen", role: "烟位", k: 16, d: 12, a: 11, acs: 218, fk: 3, pm: 4, result: "国际联赛 (胜)" },
-                        { id: 2, agent: "Viper", role: "烟位", k: 14, d: 13, a: 9, acs: 205, fk: 1, pm: 1, result: "季后赛 (胜)" },
-                        { id: 3, agent: "Clove", role: "烟位", k: 17, d: 16, a: 8, acs: 230, fk: 2, pm: 1, result: "小组赛 (负)" }
-                    ],
-                    agentsMap: {
-                        "Omen": { agent: "Omen", role: "烟位", count: 1, k: 16, d: 12, a: 11, acs: 218, fk: 3 },
-                        "Viper": { agent: "Viper", role: "烟位", count: 1, k: 14, d: 13, a: 9, acs: 205, fk: 1 },
-                        "Clove": { agent: "Clove", role: "烟位", count: 1, k: 17, d: 16, a: 8, acs: 230, fk: 2 }
-                    },
-                    totalK: 47, totalD: 41, totalA: 28, totalAcs: 653, totalFk: 6
-                },
-                [teamName + " - 自由人"]: {
-                    matches: [
-                        { id: 1, agent: "KAY/O", role: "先锋位", k: 18, d: 14, a: 10, acs: 235, fk: 3, pm: 4, result: "国际联赛 (胜)" },
-                        { id: 2, agent: "Yoru", role: "突击位", k: 19, d: 15, a: 6, acs: 250, fk: 4, pm: 4, result: "季后赛 (胜)" }
-                    ],
-                    agentsMap: {
-                        "KAY/O": { agent: "KAY/O", role: "先锋位", count: 1, k: 18, d: 14, a: 10, acs: 235, fk: 3 },
-                        "Yoru": { agent: "Yoru", role: "突击位", count: 1, k: 19, d: 15, a: 6, acs: 250, fk: 4 }
-                    },
-                    totalK: 37, totalD: 29, totalA: 16, totalAcs: 485, totalFk: 7
-                },
-                [teamName + " - 哨位守护"]: {
-                    matches: [
-                        { id: 1, agent: "Cypher", role: "哨位", k: 15, d: 12, a: 7, acs: 200, fk: 1, pm: 3, result: "国际联赛 (胜)" },
-                        { id: 2, agent: "Killjoy", role: "哨位", k: 16, d: 13, a: 5, acs: 215, fk: 2, pm: 3, result: "季后赛 (胜)" }
-                    ],
-                    agentsMap: {
-                        "Cypher": { agent: "Cypher", role: "哨位", count: 1, k: 15, d: 12, a: 7, acs: 200, fk: 1 },
-                        "Killjoy": { agent: "Killjoy", role: "哨位", count: 1, k: 16, d: 13, a: 5, acs: 215, fk: 2 }
-                    },
-                    totalK: 31, totalD: 25, totalA: 12, totalAcs: 415, totalFk: 3
-                }
-            };
-
-            const sheetNameKey = (sourceType === 'vlr' ? 'VLR-' : '号角网-') + teamName;
-            processedSheetsStore[sheetNameKey] = playersData;
-            
-            try {
-                localStorage.setItem('valo_processed_sheets_' + currentAccount, JSON.stringify(processedSheetsStore));
-            } catch(e){}
-
-            localStorage.setItem('valo_active_sheet_' + currentAccount, sheetNameKey);
-            renderSheetBar(Object.keys(processedSheetsStore), sheetNameKey);
-            render(playersData);
-            document.getElementById('fileInfo').innerText = `已从 [${targetSite}] 成功抓取战队 [${teamName}] 完整5人档案 ✅`;
+            evt.target.value = '';
         }
 
-        // 🛡️ 完美精确解析引擎
+        function fetchFromVlrOrHaojiao(sourceType) {
+            alert("暂时未开通该功能");
+        }
+
         function absoluteSafeParse(rows) {
             if (!rows || !Array.isArray(rows) || rows.length < 2) return null;
-            let headerIdx = -1;
-            let nameCol = 4, agentCol = 5, acsCol = 6, kCol = 7, dCol = 8, aCol = 9, kdCol = 10, pmCol = 11, fkCol = 12, resultCol = 2;
+            var headerIdx = -1;
+            var nameCol = 4, agentCol = 5, acsCol = 6, kCol = 7, dCol = 8, aCol = 9, resultCol = 2, fkCol = 12;
 
-            for (let i = 0; i < Math.min(15, rows.length); i++) {
-                const row = rows[i];
+            for (var i = 0; i < Math.min(15, rows.length); i++) {
+                var row = rows[i];
                 if (!row || !Array.isArray(row)) continue;
-                const rowStr = row.map(c => String(c || '').trim().toLowerCase()).join(' ');
-                if (rowStr.includes('姓名') || rowStr.includes('选手') || rowStr.includes('id') || rowStr.includes('player') || rowStr.includes('队员') || rowStr.includes('k')) {
+                var rowStr = row.map(function(c) { return String(c || '').trim().toLowerCase(); }).join(' ');
+                if (rowStr.indexOf('姓名') !== -1 || rowStr.indexOf('选手') !== -1 || rowStr.indexOf('id') !== -1 || rowStr.indexOf('player') !== -1 || rowStr.indexOf('队员') !== -1 || rowStr.indexOf('k') !== -1) {
                     headerIdx = i;
-                    row.forEach((cell, idx) => {
-                        const val = String(cell || '').trim().toLowerCase();
-                        if (val.includes('姓名') || val.includes('选手') || val.includes('id') || val.includes('队员')) nameCol = idx;
-                        if (val.includes('英雄') || val.includes('角色') || val.includes('agent')) agentCol = idx;
-                        if (val === 'k' || val.includes('击杀')) kCol = idx;
-                        if (val === 'd' || val.includes('死亡')) dCol = idx;
-                        if (val === 'a' || val.includes('助攻')) aCol = idx;
-                        if (val.includes('acs')) acsCol = idx;
-                        if (val.includes('首杀')) fkCol = idx;
-                        if (val.includes('结果') || val.includes('胜败')) resultCol = idx;
+                    row.forEach(function(cell, idx) {
+                        var val = String(cell || '').trim().toLowerCase();
+                        if (val.indexOf('姓名') !== -1 || val.indexOf('选手') !== -1 || val.indexOf('id') !== -1 || val.indexOf('队员') !== -1) nameCol = idx;
+                        if (val.indexOf('英雄') !== -1 || val.indexOf('角色') !== -1 || val.indexOf('agent') !== -1) agentCol = idx;
+                        if (val === 'k' || val.indexOf('击杀') !== -1) kCol = idx;
+                        if (val === 'd' || val.indexOf('死亡') !== -1) dCol = idx;
+                        if (val === 'a' || val.indexOf('助攻') !== -1) aCol = idx;
+                        if (val.indexOf('acs') !== -1) acsCol = idx;
+                        if (val.indexOf('首杀') !== -1) fkCol = idx;
+                        if (val.indexOf('结果') !== -1 || val.indexOf('胜败') !== -1) resultCol = idx;
                     });
                     break;
                 }
             }
 
             if (headerIdx === -1) headerIdx = 0;
-            let playersMap = {};
+            var playersMap = {};
 
-            for (let i = headerIdx + 1; i < rows.length; i++) {
-                const cols = rows[i];
+            for (var j = headerIdx + 1; j < rows.length; j++) {
+                var cols = rows[j];
                 if (!cols || !Array.isArray(cols)) continue;
 
-                const rawName = cols[nameCol] !== undefined && cols[nameCol] !== null ? String(cols[nameCol]).trim() : '';
+                var rawName = cols[nameCol] !== undefined && cols[nameCol] !== null ? String(cols[nameCol]).trim() : '';
                 if (!rawName || rawName === '' || rawName === 'null' || rawName === 'NaN' || rawName === 'undefined') continue;
 
-                const name = rawName;
-                const k = kCol !== -1 && cols[kCol] !== undefined ? (parseInt(cols[kCol]) || 0) : 0;
-                const d = dCol !== -1 && cols[dCol] !== undefined ? (parseInt(cols[dCol]) || 0) : 0;
-                const a = aCol !== -1 && cols[aCol] !== undefined ? (parseInt(cols[aCol]) || 0) : 0;
-                const acs = acsCol !== -1 && cols[acsCol] !== undefined ? (parseFloat(cols[acsCol]) || 0) : 0;
-                const fk = fkCol !== -1 && cols[fkCol] !== undefined ? (parseInt(cols[fkCol]) || 0) : 0;
-                const pm = k - d;
-                let matchResult = resultCol !== -1 && cols[resultCol] !== undefined ? String(cols[resultCol]).trim() : '完成';
+                var name = rawName;
+                var k = kCol !== -1 && cols[kCol] !== undefined ? (parseInt(cols[kCol]) || 0) : 0;
+                var d = dCol !== -1 && cols[dCol] !== undefined ? (parseInt(cols[dCol]) || 0) : 0;
+                var a = aCol !== -1 && cols[aCol] !== undefined ? (parseInt(cols[aCol]) || 0) : 0;
+                var acs = acsCol !== -1 && cols[acsCol] !== undefined ? (parseFloat(cols[acsCol]) || 0) : 0;
+                var fk = fkCol !== -1 && cols[fkCol] !== undefined ? (parseInt(cols[fkCol]) || 0) : 0;
+                var pm = k - d;
+                var matchResult = resultCol !== -1 && cols[resultCol] !== undefined ? String(cols[resultCol]).trim() : '完成';
 
-                const rawAgent = agentCol !== -1 && cols[agentCol] ? String(cols[agentCol]).trim() : 'Jett';
-                const agent = agentNameMap[rawAgent.toUpperCase().trim()] || rawAgent;
-                const role = agentRoles[agent] || '突击位';
+                var rawAgent = agentCol !== -1 && cols[agentCol] ? String(cols[agentCol]).trim() : 'Jett';
+                var agent = agentNameMap[rawAgent.toUpperCase().trim()] || rawAgent;
+                var role = agentRoles[agent] || '突击位';
 
                 if (!playersMap[name]) {
                     playersMap[name] = { matches: [], agentsMap: {}, totalK: 0, totalD: 0, totalA: 0, totalAcs: 0, totalFk: 0 };
                 }
 
-                playersMap[name].matches.push({ id: playersMap[name].matches.length + 1, agent, role, k, d, a, acs, fk, pm, result: matchResult });
+                playersMap[name].matches.push({ id: playersMap[name].matches.length + 1, agent: agent, role: role, k: k, d: d, a: a, acs: acs, fk: fk, pm: pm, result: matchResult });
                 
                 if (!playersMap[name].agentsMap[agent]) {
-                    playersMap[name].agentsMap[agent] = { agent, role, count: 0, k: 0, d: 0, a: 0, acs: 0, fk: 0 };
+                    playersMap[name].agentsMap[agent] = { agent: agent, role: role, count: 0, k: 0, d: 0, a: 0, acs: 0, fk: 0 };
                 }
-                const ag = playersMap[name].agentsMap[agent];
+                var ag = playersMap[name].agentsMap[agent];
                 ag.count += 1; ag.k += k; ag.d += d; ag.a += a; ag.acs += acs; ag.fk += fk;
 
                 playersMap[name].totalK += k; playersMap[name].totalD += d; playersMap[name].totalA += a;
@@ -418,22 +380,27 @@
         }
 
         function processFile(file) {
+            if (typeof XLSX === 'undefined') {
+                alert("❌ Excel 解析组件加载失败，请刷新页面重试。");
+                return;
+            }
+
             document.getElementById('fileInfo').innerText = "读取中: " + file.name;
-            const reader = new FileReader();
+            var reader = new FileReader();
 
             reader.onload = function(e) {
                 try {
-                    const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, { type: 'array' });
+                    var data = new Uint8Array(e.target.result);
+                    var workbook = XLSX.read(data, { type: 'array' });
                     processedSheetsStore = {};
-                    const validSheets = [];
+                    var validSheets = [];
 
-                    workbook.SheetNames.forEach(name => {
-                        if (name.startsWith('Wps') || name.startsWith('Sheet7')) return;
+                    workbook.SheetNames.forEach(function(name) {
+                        if (name.indexOf('Wps') === 0 || name.indexOf('Sheet7') === 0) return;
                         try {
-                            const sheet = workbook.Sheets[name];
-                            const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-                            const parsedMap = absoluteSafeParse(rows);
+                            var sheet = workbook.Sheets[name];
+                            var rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                            var parsedMap = absoluteSafeParse(rows);
                             if (parsedMap && Object.keys(parsedMap).length > 0) {
                                 validSheets.push(name);
                                 processedSheetsStore[name] = parsedMap;
@@ -442,218 +409,243 @@
                     });
 
                     if (validSheets.length > 0) {
-                        try { localStorage.setItem('valo_processed_sheets_' + currentAccount, JSON.stringify(processedSheetsStore)); } catch (e) {}
-                        const defaultSheet = validSheets[0];
-                        localStorage.setItem('valo_active_sheet_' + currentAccount, defaultSheet);
+                        safeStorageSet('valo_processed_sheets_' + currentAccount, JSON.stringify(processedSheetsStore));
+                        var defaultSheet = validSheets[0];
+                        safeStorageSet('valo_active_sheet_' + currentAccount, defaultSheet);
+                        currentPinnedPlayer = null;
                         renderSheetBar(validSheets, defaultSheet);
                         render(processedSheetsStore[defaultSheet]);
                         document.getElementById('fileInfo').innerText = "表格加载成功 ✅";
                     } else {
-                        alert("未能识别表格中的有效战绩。");
+                        alert("⚠️ 未能在此表格中识别到有效选手数据，请检查表头字段。");
+                        document.getElementById('fileInfo').innerText = "解析失败，无有效数据";
                     }
-                } catch(err) { alert("文件解析遇到异常。"); }
+                } catch(err) { 
+                    alert("❌ 文件解析发生错误，请确认文件格式。"); 
+                    document.getElementById('fileInfo').innerText = "解析异常";
+                }
             };
+
             reader.readAsArrayBuffer(file);
         }
 
         function renderSheetBar(sheetNames, activeSheet) {
-            const sheetSelect = document.getElementById('sheetSelect');
-            sheetSelect.innerHTML = sheetNames.map(s => `<option value="${s}" ${s === activeSheet ? 'selected':''}>📑 ${s}</option>`).join('');
+            var sheetSelect = document.getElementById('sheetSelect');
+            sheetSelect.innerHTML = sheetNames.map(function(s) {
+                return '<option value="' + s + '" ' + (s === activeSheet ? 'selected':'') + '>📑 ' + s + '</option>';
+            }).join('');
             document.getElementById('sheetBar').style.display = 'flex';
         }
 
         function onSheetDropdownChange(sheetName) {
             if (processedSheetsStore && processedSheetsStore[sheetName]) {
-                localStorage.setItem('valo_active_sheet_' + currentAccount, sheetName);
+                safeStorageSet('valo_active_sheet_' + currentAccount, sheetName);
+                currentPinnedPlayer = null;
                 render(processedSheetsStore[sheetName]);
                 document.getElementById('fileInfo').innerText = "当前显示: " + sheetName + " ✅";
             }
         }
 
-        // 🧠 职业级赛训专家诊断算法
+        function pinSearchedPlayer() {
+            var activeSheetName = safeStorageGet('valo_active_sheet_' + currentAccount);
+            var currentData = processedSheetsStore[activeSheetName];
+            if (!currentData) {
+                alert("请先读取或生成有效的选手数据！");
+                return;
+            }
+
+            var query = document.getElementById('playerSearchInput').value.trim().toLowerCase();
+            if (!query) {
+                alert("请输入要查询的选手姓名或ID");
+                return;
+            }
+
+            var playerKeys = Object.keys(currentData);
+            var matchedKey = playerKeys.find(function(name) { return name.toLowerCase().indexOf(query) !== -1; });
+
+            if (matchedKey) {
+                currentPinnedPlayer = matchedKey;
+                render(currentData);
+            } else {
+                alert("未找到匹配「" + query + "」的选手。");
+            }
+        }
+
+        function resetPlayerOrder() {
+            currentPinnedPlayer = null;
+            document.getElementById('playerSearchInput').value = '';
+            var activeSheetName = safeStorageGet('valo_active_sheet_' + currentAccount);
+            if (processedSheetsStore[activeSheetName]) {
+                render(processedSheetsStore[activeSheetName]);
+            }
+        }
+
         function generateAdvancedDiagnostics(p) {
-            const matches = p.matches || [];
+            var matches = p.matches || [];
             if (matches.length === 0) return { positionRec: "缺乏数据", agentDiff: "无", fkfdAdvice: "无" };
 
-            let roleStats = {};
-            let agentStats = p.agentsMap || {};
+            var roleStats = {};
+            var agentStats = p.agentsMap || {};
 
-            matches.forEach(m => {
+            matches.forEach(function(m) {
                 if (!roleStats[m.role]) roleStats[m.role] = { role: m.role, count: 0, k: 0, d: 0, a: 0, acs: 0, fk: 0 };
-                const r = roleStats[m.role];
+                var r = roleStats[m.role];
                 r.count += 1; r.k += m.k; r.d += m.d; r.a += m.a; r.acs += m.acs; r.fk += m.fk;
             });
 
-            let roleAnalysisList = [];
-            Object.keys(roleStats).forEach(rName => {
-                const r = roleStats[rName];
-                const avgAcs = r.count ? (r.acs / r.count) : 0;
-                const kd = r.d > 0 ? (r.k / r.d) : r.k;
-                const avgFk = r.count ? (r.fk / r.count) : 0;
+            var roleAnalysisList = [];
+            Object.keys(roleStats).forEach(function(rName) {
+                var r = roleStats[rName];
+                var avgAcs = r.count ? (r.acs / r.count) : 0;
+                var kd = r.d > 0 ? (r.k / r.d) : r.k;
+                var avgFk = r.count ? (r.fk / r.count) : 0;
                 r.score = avgAcs * Math.sqrt(Math.max(0.5, kd)) * (1 + 0.15 * avgFk);
                 r.kd = kd.toFixed(2);
                 r.avgAcs = Math.round(avgAcs);
                 roleAnalysisList.push(r);
             });
-            roleAnalysisList.sort((a,b) => b.score - a.score);
+            roleAnalysisList.sort(function(a,b) { return b.score - a.score; });
 
-            let positionRec = roleAnalysisList.length === 1 ? 
-                `主选定位：<span class="tag-pill yellow">${roleAnalysisList[0].role}</span>` : 
-                `<b>推荐主打</b> <span class="tag-pill green">${roleAnalysisList[0].role}</span>；<b>副选</b> <span class="tag-pill blue">${roleAnalysisList[1].role}</span>。`;
+            var positionRec = roleAnalysisList.length === 1 ? 
+                '主选定位：<span class="tag-pill yellow">' + roleAnalysisList[0].role + '</span>' : 
+                '<b>推荐主打</b> <span class="tag-pill green">' + roleAnalysisList[0].role + '</span>；<b>副选</b> <span class="tag-pill blue">' + roleAnalysisList[1].role + '</span>。';
 
-            let agentDiff = "";
-            let sameRoleGroups = {};
-            Object.values(agentStats).forEach(ag => {
+            var sameRoleGroups = {};
+            Object.values(agentStats).forEach(function(ag) {
                 if (!sameRoleGroups[ag.role]) sameRoleGroups[ag.role] = [];
                 sameRoleGroups[ag.role].push(ag);
             });
-            let diffNotes = [];
-            Object.keys(sameRoleGroups).forEach(role => {
-                const group = sameRoleGroups[role];
+            var diffNotes = [];
+            Object.keys(sameRoleGroups).forEach(function(role) {
+                var group = sameRoleGroups[role];
                 if (group.length >= 2) {
-                    group.sort((a,b) => (b.acs/b.count) - (a.acs/a.count));
-                    diffNotes.push(`在 <b>${role}</b> 中，<span class="text-green">${group[0].agent}</span> (ACS: ${Math.round(group[0].acs/group[0].count)}) 表现优于 <span class="text-red">${group[1].agent}</span>。`);
+                    group.sort(function(a,b) { return (b.acs/b.count) - (a.acs/a.count); });
+                    diffNotes.push('在 <b>' + role + '</b> 中，<span class="text-green">' + group[0].agent + '</span> (ACS: ' + Math.round(group[0].acs/group[0].count) + ') 表现优于 <span class="text-red">' + group[1].agent + '</span>。');
                 }
             });
-            agentDiff = diffNotes.length > 0 ? diffNotes.join('<br>') : `主力英雄：${Object.values(agentStats)[0]?.agent || 'Jett'}`;
+            var agentDiff = diffNotes.length > 0 ? diffNotes.join('<br>') : ('主力英雄：' + (Object.values(agentStats)[0]?.agent || 'Jett'));
 
-            const avgFkVal = (p.totalFk / matches.length).toFixed(1);
-            let fkfdAdvice = `场均首杀 ${avgFkVal} 次。对标职业级数据，破点效率优秀。`;
+            var avgFkVal = (p.totalFk / matches.length).toFixed(1);
+            var fkfdAdvice = '场均首杀 ' + avgFkVal + ' 次。对标职业级数据，破点效率优秀。';
 
-            return { positionRec, agentDiff, fkfdAdvice };
+            return { positionRec: positionRec, agentDiff: agentDiff, fkfdAdvice: fkfdAdvice };
         }
 
         function render(playersMap) {
             if (!playersMap || Object.keys(playersMap).length === 0) {
                 document.getElementById('placeholder').style.display = 'block';
+                document.getElementById('searchPanel').style.display = 'none';
                 document.getElementById('dashboard').innerHTML = '';
                 return;
             }
 
             document.getElementById('placeholder').style.display = 'none';
-            const db = document.getElementById('dashboard');
-            let html = '';
+            document.getElementById('searchPanel').style.display = 'block';
+            var db = document.getElementById('dashboard');
+            var html = '';
 
-            Object.keys(playersMap).forEach((name, idx) => {
-                const p = playersMap[name];
-                const matchCount = p.matches.length || 1;
-                const kd = (p.totalK / (p.totalD || 1)).toFixed(2);
-                const avgAcs = Math.round(p.totalAcs / matchCount);
-                const pm = p.totalK - p.totalD;
-                const agents = Object.values(p.agentsMap || {}).sort((a,b) => b.count - a.count);
-                const diag = generateAdvancedDiagnostics(p);
+            var playerKeys = Object.keys(playersMap);
 
-                html += `
-                <div class="player-card">
-                    <div class="player-header">
-                        <div class="player-info">
-                            <div class="avatar">${name[0].toUpperCase()}</div>
-                            <div>
-                                <h2 style="font-size: 22px;">${name}</h2>
-                                <div style="font-size: 12px; color: #9ca3af;">参战场次: ${matchCount} 场</div>
-                            </div>
-                        </div>
-                        <div class="stats-grid">
-                            <div>
-                                <div class="stat-label">生涯 K/D</div>
-                                <div class="stat-val ${kd >= 1.0 ? 'text-green' : 'text-red'}">${kd}</div>
-                            </div>
-                            <div>
-                                <div class="stat-label">正负值 +/-</div>
-                                <div class="stat-val ${pm >= 0 ? 'text-green' : 'text-red'}">${pm > 0 ? '+' + pm : pm}</div>
-                            </div>
-                            <div>
-                                <div class="stat-label">平均 ACS</div>
-                                <div class="stat-val text-yellow">${avgAcs > 0 ? avgAcs : '-'}</div>
-                            </div>
-                            <div>
-                                <div class="stat-label">场均首杀</div>
-                                <div class="stat-val text-blue">${(p.totalFk/matchCount).toFixed(1)}</div>
-                            </div>
-                        </div>
-                    </div>
+            if (currentPinnedPlayer && playersMap[currentPinnedPlayer]) {
+                playerKeys = playerKeys.filter(function(k) { return k !== currentPinnedPlayer; });
+                playerKeys.unshift(currentPinnedPlayer);
+            }
 
-                    <div class="tab-bar">
-                        <span style="font-size: 12px; font-weight: bold; color: #9ca3af;">📊 详细战绩视图</span>
-                        <div>
-                            <button class="toggle-btn active" id="btn-agg-${idx}" onclick="switchView(${idx}, 'agg')">英雄数据总览</button>
-                            <button class="toggle-btn" id="btn-match-${idx}" onclick="switchView(${idx}, 'match')">单局历史记录 (${p.matches.length})</button>
-                        </div>
-                    </div>
+            playerKeys.forEach(function(name, idx) {
+                var p = playersMap[name];
+                var isPinned = name === currentPinnedPlayer;
+                var matchCount = p.matches.length || 1;
+                var kd = (p.totalK / (p.totalD || 1)).toFixed(2);
+                var avgAcs = Math.round(p.totalAcs / matchCount);
+                var pm = p.totalK - p.totalD;
+                var agents = Object.values(p.agentsMap || {}).sort(function(a,b) { return b.count - a.count; });
+                var diag = generateAdvancedDiagnostics(p);
 
-                    <div id="view-agg-${idx}" style="padding: 16px;">
-                        <table>
-                            <thead>
-                                <tr><th>特工/英雄</th><th>定位</th><th>出场次数</th><th>击杀 / 死亡 / 助攻</th><th>K/D</th><th>平均 ACS</th></tr>
-                            </thead>
-                            <tbody>
-                                ${agents.map(ag => `
-                                    <tr>
-                                        <td><b>${ag.agent}</b></td>
-                                        <td>${getRoleBadge(ag.role)}</td>
-                                        <td>${ag.count} 场</td>
-                                        <td>${ag.k} / ${ag.d} / ${ag.a}</td>
-                                        <td class="${(ag.k/(ag.d||1))>=1 ? 'text-green':'text-red'}"><b>${(ag.k/(ag.d||1)).toFixed(2)}</b></td>
-                                        <td class="text-yellow"><b>${ag.count ? Math.round(ag.acs / ag.count) : '-'}</b></td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    </div>
+                html += '<div class="player-card ' + (isPinned ? 'pinned' : '') + '">' +
+                    '<div class="player-header">' +
+                        '<div class="player-info">' +
+                            '<div class="avatar">' + name[0].toUpperCase() + '</div>' +
+                            '<div>' +
+                                '<h2 style="font-size: 22px; display: flex; align-items: center; gap: 8px;">' +
+                                    name + (isPinned ? ' <span class="tag-pill yellow">📌 置顶显示</span>' : '') +
+                                '</h2>' +
+                                '<div style="font-size: 12px; color: #9ca3af;">参战场次: ' + matchCount + ' 场</div>' +
+                            '</div>' +
+                        '</div>' +
+                        '<div class="stats-grid">' +
+                            '<div><div class="stat-label">生涯 K/D</div><div class="stat-val ' + (kd >= 1.0 ? 'text-green' : 'text-red') + '">' + kd + '</div></div>' +
+                            '<div><div class="stat-label">正负值 +/-</div><div class="stat-val ' + (pm >= 0 ? 'text-green' : 'text-red') + '">' + (pm > 0 ? '+' + pm : pm) + '</div></div>' +
+                            '<div><div class="stat-label">平均 ACS</div><div class="stat-val text-yellow">' + (avgAcs > 0 ? avgAcs : '-') + '</div></div>' +
+                            '<div><div class="stat-label">场均首杀</div><div class="stat-val text-blue">' + (p.totalFk/matchCount).toFixed(1) + '</div></div>' +
+                        '</div>' +
+                    '</div>' +
 
-                    <div id="view-match-${idx}" style="padding: 16px; display: none;">
-                        <table>
-                            <thead>
-                                <tr><th>场次</th><th>英雄角色</th><th>定位</th><th>ACS</th><th>K</th><th>D</th><th>A</th><th>K/D</th><th>+/-</th><th>首杀</th><th>对局状态</th></tr>
-                            </thead>
-                            <tbody>
-                                ${p.matches.map(m => {
-                                    const mKd = (m.k / (m.d || 1)).toFixed(2);
-                                    return `
-                                    <tr>
-                                        <td>#${m.id}</td>
-                                        <td><b>${m.agent}</b></td>
-                                        <td>${getRoleBadge(m.role)}</td>
-                                        <td class="text-yellow"><b>${m.acs || '-'}</b></td>
-                                        <td>${m.k}</td><td>${m.d}</td><td>${m.a}</td>
-                                        <td class="${m.k >= m.d ? 'text-green':'text-red'}"><b>${mKd}</b></td>
-                                        <td class="${m.pm >= 0 ? 'text-green':'text-red'}">${m.pm > 0 ? '+' + m.pm : m.pm}</td>
-                                        <td class="text-blue"><b>${m.fk || 0}</b></td>
-                                        <td><span class="tag-pill yellow">${m.result}</span></td>
-                                    </tr>`;
-                                }).join('')}
-                            </tbody>
-                        </table>
-                    </div>
+                    '<div class="tab-bar">' +
+                        '<span style="font-size: 12px; font-weight: bold; color: #9ca3af;">📊 详细战绩视图</span>' +
+                        '<div>' +
+                            '<button class="toggle-btn active" id="btn-agg-' + idx + '" onclick="switchView(' + idx + ', \'agg\')">英雄数据总览</button>' +
+                            '<button class="toggle-btn" id="btn-match-' + idx + '" onclick="switchView(' + idx + ', \'match\')">单局历史记录 (' + p.matches.length + ')</button>' +
+                        '</div>' +
+                    '</div>' +
 
-                    <div class="advice-box">
-                        <div class="advice-header"><span>🧠</span> 职业级赛训专家诊断与战术建议</div>
-                        <div class="advice-grid">
-                            <div class="advice-card">
-                                <div class="advice-card-title"><span>🎯 主 / 副定位综合推荐</span></div>
-                                <div class="advice-card-body">${diag.positionRec}</div>
-                            </div>
-                            <div class="advice-card">
-                                <div class="advice-card-title"><span>⚔️ 同定位英雄横向对比</span></div>
-                                <div class="advice-card-body">${diag.agentDiff}</div>
-                            </div>
-                        </div>
-                        <div class="advice-card">
-                            <div class="advice-card-title"><span>⚡ 激进 vs 保守 / 首杀与对位风格诊断</span></div>
-                            <div class="advice-card-body">${diag.fkfdAdvice}</div>
-                        </div>
-                    </div>
-                </div>
-                `;
+                    '<div id="view-agg-' + idx + '" style="padding: 16px;">' +
+                        '<table>' +
+                            '<thead><tr><th>特工/英雄</th><th>定位</th><th>出场次数</th><th>击杀 / 死亡 / 助攻</th><th>K/D</th><th>平均 ACS</th></tr></thead>' +
+                            '<tbody>' +
+                                agents.map(function(ag) {
+                                    return '<tr>' +
+                                        '<td><b>' + ag.agent + '</b></td>' +
+                                        '<td>' + getRoleBadge(ag.role) + '</td>' +
+                                        '<td>' + ag.count + ' 场</td>' +
+                                        '<td>' + ag.k + ' / ' + ag.d + ' / ' + ag.a + '</td>' +
+                                        '<td class="' + ((ag.k/(ag.d||1))>=1 ? 'text-green':'text-red') + '"><b>' + (ag.k/(ag.d||1)).toFixed(2) + '</b></td>' +
+                                        '<td class="text-yellow"><b>' + (ag.count ? Math.round(ag.acs / ag.count) : '-') + '</b></td>' +
+                                    '</tr>';
+                                }).join('') +
+                            '</tbody>' +
+                        '</table>' +
+                    '</div>' +
+
+                    '<div id="view-match-' + idx + '" style="padding: 16px; display: none;">' +
+                        '<table>' +
+                            '<thead><tr><th>场次</th><th>英雄角色</th><th>定位</th><th>ACS</th><th>K</th><th>D</th><th>A</th><th>K/D</th><th>+/-</th><th>首杀</th><th>对局状态</th></tr></thead>' +
+                            '<tbody>' +
+                                p.matches.map(function(m) {
+                                    var mKd = (m.k / (m.d || 1)).toFixed(2);
+                                    return '<tr>' +
+                                        '<td>#' + m.id + '</td>' +
+                                        '<td><b>' + m.agent + '</b></td>' +
+                                        '<td>' + getRoleBadge(m.role) + '</td>' +
+                                        '<td class="text-yellow"><b>' + (m.acs || '-') + '</b></td>' +
+                                        '<td>' + m.k + '</td><td>' + m.d + '</td><td>' + m.a + '</td>' +
+                                        '<td class="' + (m.k >= m.d ? 'text-green':'text-red') + '"><b>' + mKd + '</b></td>' +
+                                        '<td class="' + (m.pm >= 0 ? 'text-green':'text-red') + '">' + (m.pm > 0 ? '+' + m.pm : m.pm) + '</td>' +
+                                        '<td class="text-blue"><b>' + (m.fk || 0) + '</b></td>' +
+                                        '<td><span class="tag-pill yellow">' + m.result + '</span></td>' +
+                                    '</tr>';
+                                }).join('') +
+                            '</tbody>' +
+                        '</table>' +
+                    '</div>' +
+
+                    '<div class="advice-box">' +
+                        '<div class="advice-header"><span>🧠</span> 职业级赛训专家诊断与战术建议</div>' +
+                        '<div class="advice-grid">' +
+                            '<div class="advice-card"><div class="advice-card-title"><span>🎯 主 / 副定位综合推荐</span></div><div class="advice-card-body">' + diag.positionRec + '</div></div>' +
+                            '<div class="advice-card"><div class="advice-card-title"><span>⚔️ 同定位英雄横向对比</span></div><div class="advice-card-body">' + diag.agentDiff + '</div></div>' +
+                        '</div>' +
+                        '<div class="advice-card"><div class="advice-card-title"><span>⚡ 激进 vs 保守 / 首杀与对位风格诊断</span></div><div class="advice-card-body">' + diag.fkfdAdvice + '</div></div>' +
+                    '</div>' +
+                '</div>';
             });
             db.innerHTML = html;
         }
 
         function switchView(idx, type) {
-            const aggView = document.getElementById(`view-agg-${idx}`);
-            const matchView = document.getElementById(`view-match-${idx}`);
-            const aggBtn = document.getElementById(`btn-agg-${idx}`);
-            const matchBtn = document.getElementById(`btn-match-${idx}`);
+            var aggView = document.getElementById('view-agg-' + idx);
+            var matchView = document.getElementById('view-match-' + idx);
+            var aggBtn = document.getElementById('btn-agg-' + idx);
+            var matchBtn = document.getElementById('btn-match-' + idx);
 
             if (type === 'agg') {
                 aggView.style.display = 'block';
